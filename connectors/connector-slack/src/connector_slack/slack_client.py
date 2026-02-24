@@ -70,14 +70,14 @@ def get_upload_url_external(
 ) -> tuple[dict[str, Any], int, CommandErrorDict | None]:
     """Step 1 of new upload flow: get a pre-signed upload URL from Slack.
     Returns (response_json, http_status, error_dict). response_json has 'upload_url' and 'file_id' on success."""
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    body: dict[str, Any] = {"filename": filename, "length": length}
+    headers = {"Authorization": f"Bearer {token}"}
+    data: dict[str, Any] = {"filename": filename, "length": length}
     if snippet_type:
-        body["snippet_type"] = snippet_type
+        data["snippet_type"] = snippet_type
     try:
         response = requests.post(
             "https://slack.com/api/files.getUploadURLExternal",
-            headers=headers, json=body, timeout=timeout,
+            headers=headers, data=data, timeout=timeout,
         )
     except Exception as exc:
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
@@ -110,16 +110,16 @@ def complete_upload_external(
 ) -> tuple[dict[str, Any], int, CommandErrorDict | None]:
     """Step 3: finalize the upload and optionally share to a channel.
     Returns (response_json, http_status, error_dict)."""
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    body: dict[str, Any] = {"files": [{"id": file_id, "title": title}]}
+    headers = {"Authorization": f"Bearer {token}"}
+    data: dict[str, Any] = {"files": json.dumps([{"id": file_id, "title": title}])}
     if channel_id:
-        body["channel_id"] = channel_id
+        data["channel_id"] = channel_id
     if initial_comment:
-        body["initial_comment"] = initial_comment
+        data["initial_comment"] = initial_comment
     try:
         response = requests.post(
             "https://slack.com/api/files.completeUploadExternal",
-            headers=headers, json=body, timeout=timeout,
+            headers=headers, data=data, timeout=timeout,
         )
     except Exception as exc:
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
