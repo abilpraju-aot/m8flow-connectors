@@ -45,36 +45,14 @@ def post_json(url: str, token: str, body: dict[str, Any], timeout: int = DEFAULT
         response = requests.post(url, headers=headers, json=body, timeout=timeout)
     except Exception as exc:
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
-
-    content_type = response.headers.get("Content-Type", "")
-    if "application/json" not in content_type:
-        return (
-            {},
-            response.status_code,
-            {"error_code": "SlackMessageFailed", "message": "Unreadable (non JSON) response from Slack"},
-        )
-
-    try:
-        response_json = response.json()
-    except (ValueError, TypeError):
-        return (
-            {},
-            response.status_code,
-            {"error_code": "SlackMessageFailed", "message": "Unreadable (non JSON) response from Slack"},
-        )
-
-    if response_json.get("ok") is True:
-        return (response_json, response.status_code, None)
-
-    status_code, error = _slack_error_to_connector_error(response_json, response.status_code)
-    return ({}, status_code, error)
+    return _parse_slack_json_response(response)
 
 
 def post_multipart(
     url: str, token: str, files: dict[str, tuple[str, bytes]], data: dict[str, str] | None = None, timeout: int = DEFAULT_TIMEOUT
 ) -> tuple[dict[str, Any], int, CommandErrorDict | None]:
     """
-    POST multipart/form-data to Slack API (e.g. files.upload). Returns (response_json, http_status, error_dict).
+    POST multipart/form-data to Slack API. Returns (response_json, http_status, error_dict).
     error_dict is None on success. Token is only used in Authorization header.
     """
     headers = {"Authorization": f"Bearer {token}"}
@@ -84,27 +62,87 @@ def post_multipart(
         response = requests.post(url, headers=headers, files=files, data=data, timeout=timeout)
     except Exception as exc:
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
+    return _parse_slack_json_response(response)
 
+
+def get_upload_url_external(
+    token: str, filename: str, length: int, snippet_type: str = "", timeout: int = DEFAULT_TIMEOUT
+) -> tuple[dict[str, Any], int, CommandErrorDict | None]:
+    """Step 1 of new upload flow: get a pre-signed upload URL from Slack.
+    Returns (response_json, http_status, error_dict). response_json has 'upload_url' and 'file_id' on success."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    body: dict[str, Any] = {"filename": filename, "length": length}
+    if snippet_type:
+        body["snippet_type"] = snippet_type
+    try:
+        response = requests.post(
+            "https://slack.com/api/files.getUploadURLExternal",
+            headers=headers, json=body, timeout=timeout,
+        )
+    except Exception as exc:
+        return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
+    return _parse_slack_json_response(response)
+
+
+def upload_file_bytes(
+    upload_url: str, filename: str, content_bytes: bytes, timeout: int = DEFAULT_TIMEOUT
+) -> tuple[int, CommandErrorDict | None]:
+    """Step 2: POST raw file bytes to the pre-signed URL returned by getUploadURLExternal.
+    Returns (http_status, error_dict). error_dict is None on success (HTTP 200)."""
+    try:
+        response = requests.post(
+            upload_url, data=content_bytes,
+            headers={"Content-Type": "application/octet-stream"},
+            timeout=timeout,
+        )
+    except Exception as exc:
+        return (500, {"error_code": exc.__class__.__name__, "message": str(exc)})
+    if response.status_code == 200:
+        return (200, None)
+    return (
+        response.status_code,
+        {"error_code": "SlackUploadFailed", "message": f"Upload to pre-signed URL failed with HTTP {response.status_code}"},
+    )
+
+
+def complete_upload_external(
+    token: str, file_id: str, title: str, channel_id: str = "", initial_comment: str = "", timeout: int = DEFAULT_TIMEOUT
+) -> tuple[dict[str, Any], int, CommandErrorDict | None]:
+    """Step 3: finalize the upload and optionally share to a channel.
+    Returns (response_json, http_status, error_dict)."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    body: dict[str, Any] = {"files": [{"id": file_id, "title": title}]}
+    if channel_id:
+        body["channel_id"] = channel_id
+    if initial_comment:
+        body["initial_comment"] = initial_comment
+    try:
+        response = requests.post(
+            "https://slack.com/api/files.completeUploadExternal",
+            headers=headers, json=body, timeout=timeout,
+        )
+    except Exception as exc:
+        return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
+    return _parse_slack_json_response(response)
+
+
+def _parse_slack_json_response(response: requests.Response) -> tuple[dict[str, Any], int, CommandErrorDict | None]:
+    """Parse a standard Slack JSON API response. Shared by all JSON endpoints."""
     content_type = response.headers.get("Content-Type", "")
     if "application/json" not in content_type:
         return (
-            {},
-            response.status_code,
+            {}, response.status_code,
             {"error_code": "SlackMessageFailed", "message": "Unreadable (non JSON) response from Slack"},
         )
-
     try:
         response_json = response.json()
     except (ValueError, TypeError):
         return (
-            {},
-            response.status_code,
+            {}, response.status_code,
             {"error_code": "SlackMessageFailed", "message": "Unreadable (non JSON) response from Slack"},
         )
-
     if response_json.get("ok") is True:
         return (response_json, response.status_code, None)
-
     status_code, error = _slack_error_to_connector_error(response_json, response.status_code)
     return ({}, status_code, error)
 

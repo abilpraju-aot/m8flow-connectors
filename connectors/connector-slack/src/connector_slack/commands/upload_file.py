@@ -1,13 +1,17 @@
-"""Upload a file to a Slack channel or DM. Channel can be channel ID or user ID for DM.
-Slack files.upload is deprecated (sunset Nov 2025); migration to files.getUploadURLExternal/files.completeUploadExternal recommended later.
+"""Upload a file to a Slack channel or DM via the new external-upload API.
+Uses files.getUploadURLExternal + files.completeUploadExternal (files.upload was sunset Nov 2025).
 File size is limited by M8FLOW_CONNECTOR_SLACK_UPLOAD_FILE_LIMIT_MB (default 50 MB, hard max 100 MB) so workflows get a clear error instead of timeouts."""
 import os
 from typing import Any
 
 from connector_slack.connector_interface import ConnectorCommand, ConnectorProxyResponseDict
-from connector_slack.slack_client import build_result, error_response, post_multipart
-
-SLACK_UPLOAD_URL = "https://slack.com/api/files.upload"
+from connector_slack.slack_client import (
+    build_result,
+    complete_upload_external,
+    error_response,
+    get_upload_url_external,
+    upload_file_bytes,
+)
 
 # --- File size limits (mirror SMTP attachment handling) ---
 HARD_UPLOAD_LIMIT_MB = 100
@@ -132,14 +136,13 @@ class UploadFile(ConnectorCommand):
                 _enforce_upload_limit(self.filename or os.path.basename(safe_path), size, limit_bytes)
                 with open(safe_path, "rb") as f:
                     content_bytes = f.read()
-                _enforce_upload_limit(self.filename or os.path.basename(safe_path), len(content_bytes), limit_bytes)
             except (ValueError, FileNotFoundError) as exc:
                 return error_response(400, "SlackFileInvalidPath", str(exc))
             except OSError as exc:
                 return error_response(400, "SlackFileInvalidPath", str(exc))
         else:
             if self.content is None or (isinstance(self.content, str) and not self.content.strip()) or (isinstance(self.content, bytes) and len(self.content) == 0):
-                return error_response(400, "SlackFileInvalidPath", "Provide either content or path.")
+                return error_response(400, "SlackMissingContent", "Provide either content or path.")
             content_bytes = self.content.encode("utf-8") if isinstance(self.content, str) else self.content
             try:
                 _enforce_upload_limit(self.filename or "upload", len(content_bytes), limit_bytes)
@@ -147,9 +150,27 @@ class UploadFile(ConnectorCommand):
                 return error_response(400, "SlackFileTooLarge", str(exc))
 
         display_filename = self.filename or (os.path.basename(self.path) if self.path else "upload")
-        files = {"file": (display_filename, content_bytes)}
-        data: dict[str, str] = {"channels": self.channel}
-        if self.initial_comment:
-            data["initial_comment"] = self.initial_comment
-        response_json, status, error = post_multipart(SLACK_UPLOAD_URL, self.token, files, data)
-        return build_result(response_json, status, error)
+
+        # Step 1: get pre-signed upload URL
+        url_json, url_status, url_err = get_upload_url_external(
+            self.token, display_filename, len(content_bytes),
+        )
+        if url_err:
+            return build_result(url_json, url_status, url_err)
+
+        upload_url = url_json.get("upload_url", "")
+        file_id = url_json.get("file_id", "")
+        if not upload_url or not file_id:
+            return error_response(500, "SlackUploadFailed", "Slack did not return upload_url or file_id.")
+
+        # Step 2: POST file bytes to the pre-signed URL
+        put_status, put_err = upload_file_bytes(upload_url, display_filename, content_bytes)
+        if put_err:
+            return error_response(put_status, put_err["error_code"], put_err["message"])
+
+        # Step 3: finalize the upload and share to channel
+        complete_json, complete_status, complete_err = complete_upload_external(
+            self.token, file_id, display_filename, channel_id=self.channel,
+            initial_comment=self.initial_comment,
+        )
+        return build_result(complete_json, complete_status, complete_err)
