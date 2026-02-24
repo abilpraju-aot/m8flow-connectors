@@ -1,8 +1,8 @@
-"""Connector interface for m8flow; inherits from spiffworkflow_connector_command so the proxy recognizes commands."""
+"""Local connector interface for m8flow (no Spiff dependency)."""
+from abc import ABC
 from abc import abstractmethod
-from typing import Any, TypedDict
-
-from spiffworkflow_connector_command.command_interface import ConnectorCommand as SpiffConnectorCommand
+from typing import Any
+from typing import TypedDict
 
 
 class CommandResponseDict(TypedDict):
@@ -28,8 +28,8 @@ class ConnectorProxyResponseDict(TypedDict, total=False):
     command_response_version: int
 
 
-class ConnectorCommand(SpiffConnectorCommand):
-    """Base for m8flow Slack connector commands. Token must be a valid Slack OAuth access token; obtain and store it via m8flow/platform."""
+class ConnectorCommand(ABC):
+    """Base for m8flow connector commands. Uses Salesforce OAuth access token; obtain and store via m8flow/platform."""
 
     @abstractmethod
     def execute(self, config: Any, task_data: Any) -> ConnectorProxyResponseDict:

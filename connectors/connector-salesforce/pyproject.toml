@@ -1,14 +1,13 @@
 [tool.poetry]
-name = "connector_slack"
+name = "connector_salesforce"
 version = "1.0.0"
-description = "Slack connector for m8flow: post message, send DM, upload file"
+description = "Salesforce connector for m8flow: CRUD for Lead and Contact with OAuth"
 readme = "README.md"
-packages = [{include = "connector_slack", from = "src" }]
+packages = [{include = "connector_salesforce", from = "src" }]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 requests = "^2.28.1"
-spiffworkflow-connector-command = {git = "https://github.com/sartography/spiffworkflow-connector-command.git", rev = "main"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.0"
@@ -24,7 +23,6 @@ select = [
   "B",   # flake8-bugbear
   "C",   # mccabe
   "E",   # pycodestyle error
-  # "ERA",  # eradicate
   "F",   # pyflakes
   "N",   # pep8-naming
   "PL",  # pylint
@@ -35,14 +33,12 @@ select = [
 ]
 
 ignore = [
-  "C901",  # "complexity" category
-  "PLR",  # "refactoring" category has "too many lines in method" type stuff
-  "PLE1205"  # saw this Too many arguments for `logging` format string give a false positive once
+  "C901",
+  "PLR",
+  "PLE1205"
 ]
 
 line-length = 130
-
-# target python 3.10
 target-version = "py310"
 
 exclude = [
@@ -51,7 +47,7 @@ exclude = [
 
 [tool.ruff.per-file-ignores]
 "migrations/versions/*.py" = ["E501"]
-"tests/**/*.py" = ["PLR2004", "S101"]  # PLR2004 is about magic vars, S101 allows assert
+"tests/**/*.py" = ["PLR2004", "S101"]
 
 [tool.ruff.isort]
 force-single-line = true
