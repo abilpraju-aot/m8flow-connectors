@@ -112,7 +112,6 @@ class UploadFile(ConnectorCommand):
         self,
         token: str,
         channel: str,
-        content: str = "",
         filename: str = "",
         initial_comment: str = "",
         filepath: str = "",
@@ -120,7 +119,6 @@ class UploadFile(ConnectorCommand):
     ):
         self.token = token
         self.channel = channel
-        self.content = content or ""
         self.filename = filename or ""
         self.initial_comment = initial_comment or ""
         self.filepath = filepath or ""
@@ -174,17 +172,11 @@ class UploadFile(ConnectorCommand):
                 _enforce_upload_limit(effective_filename, len(content_bytes), limit_bytes)
                 logs.append(f"base64 mode: {effective_filename} ({len(content_bytes)} bytes)")
             else:
-                if not self.content.strip():
-                    logs.append("content mode: empty content")
-                    return self._result(
-                        logs, 400, "SlackMissingContent",
-                        "File content must not be empty.",
-                    )
-
-                effective_filename = self.filename or "upload.txt"
-                content_bytes = self.content.encode("utf-8")
-                _enforce_upload_limit(effective_filename, len(content_bytes), limit_bytes)
-                logs.append(f"content mode: {effective_filename} ({len(content_bytes)} bytes)")
+                logs.append("no content source provided")
+                return self._result(
+                    logs, 400, "SlackMissingContent",
+                    "Either 'filepath' or 'content_base64' must be provided.",
+                )
 
             logs.append("requesting upload URL from Slack")
             url_json, url_status, url_err = get_upload_url_external(
