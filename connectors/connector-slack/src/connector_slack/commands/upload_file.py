@@ -14,7 +14,7 @@ from connector_slack.slack_client import (
 
 # The ONLY directory files may be read from for upload.
 # Mount your host folder to this path in docker-compose.
-ATTACHMENTS_DIR = os.environ.get("M8FLOW_CONNECTOR_SLACK_ATTACHMENTS_DIR", "../slack_attachments")
+ATTACHMENTS_DIR = os.environ.get("M8FLOW_CONNECTOR_SLACK_ATTACHMENTS_USER_ACCESS_DIR", "/slack_attachments")
 
 # --- Limits ---
 HARD_UPLOAD_LIMIT_MB = 100
