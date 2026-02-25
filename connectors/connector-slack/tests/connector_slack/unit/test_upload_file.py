@@ -115,7 +115,7 @@ class TestUploadFileFromPath:
     """Tests for filepath-based upload."""
 
     def _patch_allowed_dir(self, tmpdir: str):
-        return patch(f"{MODULE}.ALLOWED_UPLOAD_DIR", tmpdir)
+        return patch(f"{MODULE}.ATTACHMENTS_DIR", tmpdir)
 
     def test_filepath_success(self, tmp_path) -> None:
         file = tmp_path / "report.pdf"

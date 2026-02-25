@@ -12,11 +12,9 @@ from connector_slack.slack_client import (
     upload_file_bytes,
 )
 
-# Directory the connector reads uploaded files from (host-side mount).
+# The ONLY directory files may be read from for upload.
+# Mount your host folder to this path in docker-compose.
 ATTACHMENTS_DIR = os.environ.get("M8FLOW_CONNECTOR_SLACK_ATTACHMENTS_DIR", "../slack_attachments")
-
-# User-facing mount path; file paths supplied by the workflow are resolved under this root.
-ALLOWED_UPLOAD_DIR = os.environ.get("M8FLOW_CONNECTOR_SLACK_UPLOAD_FILE_DIR", "/attachments")
 
 # --- Limits ---
 HARD_UPLOAD_LIMIT_MB = 100
@@ -44,14 +42,14 @@ def _get_upload_limit_bytes() -> int:
 
 
 def _resolve_and_validate_upload_path(path_value: str) -> str:
-    """Ensure *path_value* is a safe, absolute path under ALLOWED_UPLOAD_DIR.
+    """Ensure *path_value* is a safe, absolute path under ATTACHMENTS_DIR.
 
     Returns the resolved filesystem path ready for ``open()``.
     """
     if not path_value or not isinstance(path_value, str):
         raise ValueError("Upload 'filepath' must be a non-empty string.")
 
-    allowed_root = os.path.realpath(ALLOWED_UPLOAD_DIR)
+    allowed_root = os.path.realpath(ATTACHMENTS_DIR)
 
     if os.name != "nt" and (":" in path_value[:3] or path_value.startswith("\\\\")):
         raise ValueError(
@@ -112,7 +110,7 @@ class UploadFile(ConnectorCommand):
 
         try:
             limit_bytes = _get_upload_limit_bytes()
-            logs.append(f"upload allowed dir: {os.path.realpath(ALLOWED_UPLOAD_DIR)}")
+            logs.append(f"upload attachments dir: {os.path.realpath(ATTACHMENTS_DIR)}")
             logs.append(
                 f"upload size limit: {limit_bytes / (1024 * 1024):.2f} MB"
                 f" (hard max {HARD_UPLOAD_LIMIT_MB} MB)"
