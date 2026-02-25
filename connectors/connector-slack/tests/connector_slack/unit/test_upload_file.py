@@ -81,7 +81,7 @@ class TestUploadFileSizeLimit:
         big_content = "x" * (51 * 1024 * 1024)
         r = UploadFile("tok", "C1", big_content, "big.txt").execute({}, {})
         assert r["error"] is not None
-        assert r["error"]["error_code"] == "SlackUploadValidation"
+        assert r["error"]["error_code"] == "ValueError"
         assert "too large" in r["error"]["message"]
 
     def test_content_within_limit(self) -> None:
@@ -164,7 +164,7 @@ class TestUploadFileFromPath:
         with self._patch_allowed_dir(allowed):
             r = UploadFile("tok", "C1", filepath=str(outside)).execute({}, {})
             assert r["error"] is not None
-            assert r["error"]["error_code"] == "SlackUploadValidation"
+            assert r["error"]["error_code"] == "ValueError"
 
     def test_filepath_traversal_rejected(self, tmp_path) -> None:
         allowed = str(tmp_path / "uploads")
@@ -176,7 +176,7 @@ class TestUploadFileFromPath:
         with self._patch_allowed_dir(allowed):
             r = UploadFile("tok", "C1", filepath=traversal).execute({}, {})
             assert r["error"] is not None
-            assert r["error"]["error_code"] == "SlackUploadValidation"
+            assert r["error"]["error_code"] == "ValueError"
 
     def test_filepath_file_not_found(self, tmp_path) -> None:
         allowed = str(tmp_path)
@@ -198,10 +198,62 @@ class TestUploadFileFromPath:
         ):
             r = UploadFile("tok", "C1", filepath=str(big)).execute({}, {})
             assert r["error"] is not None
-            assert r["error"]["error_code"] == "SlackUploadValidation"
+            assert r["error"]["error_code"] == "ValueError"
             assert "too large" in r["error"]["message"]
 
     def test_filepath_relative_path_rejected(self) -> None:
         r = UploadFile("tok", "C1", filepath="relative/path.txt").execute({}, {})
         assert r["error"] is not None
-        assert r["error"]["error_code"] == "SlackUploadValidation"
+        assert r["error"]["error_code"] == "ValueError"
+
+    def test_filepath_oserror_caught(self, tmp_path) -> None:
+        """OSError during file read must return a structured error, not a 500."""
+        allowed = str(tmp_path)
+        target = tmp_path / "unreadable.bin"
+        target.write_bytes(b"data")
+
+        with (
+            self._patch_allowed_dir(allowed),
+            patch("builtins.open", side_effect=OSError("disk I/O error")),
+        ):
+            r = UploadFile("tok", "C1", filepath=str(target)).execute({}, {})
+            assert r["error"] is not None
+            assert r["error"]["error_code"] == "OSError"
+            assert "disk I/O error" in r["error"]["message"]
+            assert "spiff__logs" in r
+
+    def test_filepath_permission_error_caught(self, tmp_path) -> None:
+        """PermissionError must return a structured error, not a 500."""
+        allowed = str(tmp_path)
+        target = tmp_path / "secret.bin"
+        target.write_bytes(b"x")
+
+        with (
+            self._patch_allowed_dir(allowed),
+            patch("builtins.open", side_effect=PermissionError("access denied")),
+        ):
+            r = UploadFile("tok", "C1", filepath=str(target)).execute({}, {})
+            assert r["error"] is not None
+            assert r["error"]["error_code"] == "PermissionError"
+            assert "spiff__logs" in r
+
+
+class TestUploadFileSpiffLogs:
+    """Verify spiff__logs is present in all response paths."""
+
+    def test_success_includes_logs(self) -> None:
+        with patch(GET_URL) as m_url, patch(UPLOAD_BYTES) as m_up, patch(COMPLETE) as m_done:
+            _mock_success(m_url, m_up, m_done)
+            r = UploadFile("tok", "C1", "hello", "t.txt").execute({}, {})
+            assert "spiff__logs" in r
+            assert any("upload completed successfully" in l for l in r["spiff__logs"])
+
+    def test_empty_content_includes_logs(self) -> None:
+        r = UploadFile("tok", "C1", "", "t.txt").execute({}, {})
+        assert "spiff__logs" in r
+
+    def test_error_response_includes_logs(self) -> None:
+        with patch(GET_URL) as m_url, patch(UPLOAD_BYTES) as m_up, patch(COMPLETE) as m_done:
+            m_url.return_value = ({}, 403, {"error_code": "SlackPermissionError", "message": "missing_scope"})
+            r = UploadFile("tok", "C1", "data", "x.txt").execute({}, {})
+            assert "spiff__logs" in r

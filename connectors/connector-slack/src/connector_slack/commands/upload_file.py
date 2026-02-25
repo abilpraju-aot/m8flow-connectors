@@ -110,57 +110,102 @@ class UploadFile(ConnectorCommand):
         self.filepath = filepath or ""
 
     def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
-        limit_bytes = _get_upload_limit_bytes()
+        logs: list[str] = []
 
-        if self.filepath:
-            try:
+        try:
+            limit_bytes = _get_upload_limit_bytes()
+            logs.append(f"upload allowed dir: {os.path.realpath(ALLOWED_UPLOAD_DIR)}")
+            logs.append(
+                f"upload size limit: {limit_bytes / (1024 * 1024):.2f} MB"
+                f" (hard max {HARD_UPLOAD_LIMIT_MB} MB)"
+            )
+
+            if self.filepath:
+                logs.append(f"filepath mode: {self.filepath!r}")
                 safe_path = _resolve_and_validate_upload_path(self.filepath)
+                logs.append(f"resolved path: {safe_path}")
 
                 if not os.path.isfile(safe_path):
-                    return error_response(
-                        400, "SlackFileNotFound", f"No such file in upload directory: {self.filepath}"
+                    logs.append(f"file not found: {safe_path}")
+                    return self._result(
+                        logs, 400, "SlackFileNotFound",
+                        f"No such file in upload directory: {self.filepath}",
                     )
 
                 size = os.path.getsize(safe_path)
                 effective_filename = self.filename or os.path.basename(safe_path)
                 _enforce_upload_limit(effective_filename, size, limit_bytes)
+                logs.append(f"file ok: {effective_filename} ({size} bytes)")
 
                 with open(safe_path, "rb") as f:
                     content_bytes = f.read()
 
                 _enforce_upload_limit(effective_filename, len(content_bytes), limit_bytes)
-            except ValueError as exc:
-                return error_response(400, "SlackUploadValidation", str(exc))
+            else:
+                if not self.content.strip():
+                    logs.append("content mode: empty content")
+                    return self._result(
+                        logs, 400, "SlackMissingContent",
+                        "File content must not be empty.",
+                    )
 
-        else:
-            if not self.content.strip():
-                return error_response(400, "SlackMissingContent", "File content must not be empty.")
-
-            effective_filename = self.filename or "upload.txt"
-            content_bytes = self.content.encode("utf-8")
-
-            try:
+                effective_filename = self.filename or "upload.txt"
+                content_bytes = self.content.encode("utf-8")
                 _enforce_upload_limit(effective_filename, len(content_bytes), limit_bytes)
-            except ValueError as exc:
-                return error_response(400, "SlackUploadValidation", str(exc))
+                logs.append(f"content mode: {effective_filename} ({len(content_bytes)} bytes)")
 
-        url_json, url_status, url_err = get_upload_url_external(
-            self.token, effective_filename, len(content_bytes),
-        )
-        if url_err:
-            return build_result(url_json, url_status, url_err)
+            logs.append("requesting upload URL from Slack")
+            url_json, url_status, url_err = get_upload_url_external(
+                self.token, effective_filename, len(content_bytes),
+            )
+            if url_err:
+                logs.append(f"get_upload_url error: {url_err}")
+                result = build_result(url_json, url_status, url_err)
+                result["spiff__logs"] = logs  # type: ignore[typeddict-unknown-key]
+                return result
 
-        upload_url = url_json.get("upload_url", "")
-        file_id = url_json.get("file_id", "")
-        if not upload_url or not file_id:
-            return error_response(500, "SlackUploadFailed", "Slack did not return upload_url or file_id.")
+            upload_url = url_json.get("upload_url", "")
+            file_id = url_json.get("file_id", "")
+            if not upload_url or not file_id:
+                logs.append("Slack did not return upload_url or file_id")
+                return self._result(
+                    logs, 500, "SlackUploadFailed",
+                    "Slack did not return upload_url or file_id.",
+                )
 
-        put_status, put_err = upload_file_bytes(upload_url, effective_filename, content_bytes)
-        if put_err:
-            return error_response(put_status, put_err["error_code"], put_err["message"])
+            logs.append(f"uploading {len(content_bytes)} bytes to pre-signed URL")
+            put_status, put_err = upload_file_bytes(upload_url, effective_filename, content_bytes)
+            if put_err:
+                logs.append(f"upload bytes error: {put_err}")
+                return self._result(logs, put_status, put_err["error_code"], put_err["message"])
 
-        complete_json, complete_status, complete_err = complete_upload_external(
-            self.token, file_id, effective_filename,
-            channel_id=self.channel, initial_comment=self.initial_comment,
-        )
-        return build_result(complete_json, complete_status, complete_err)
+            logs.append("completing upload")
+            cj, cs, ce = complete_upload_external(
+                self.token, file_id, effective_filename,
+                channel_id=self.channel, initial_comment=self.initial_comment,
+            )
+            if ce:
+                logs.append(f"complete error: {ce}")
+            else:
+                logs.append("upload completed successfully")
+            result = build_result(cj, cs, ce)
+            result["spiff__logs"] = logs  # type: ignore[typeddict-unknown-key]
+            return result
+
+        except Exception as exc:
+            logs.append(f"unhandled error: {exc.__class__.__name__}: {exc}")
+            return self._result(logs, 500, exc.__class__.__name__, str(exc))
+
+    @staticmethod
+    def _result(
+        logs: list[str],
+        http_status: int,
+        error_code: str,
+        message: str,
+    ) -> ConnectorProxyResponseDict:
+        return {  # type: ignore[typeddict-unknown-key]
+            "command_response": {"body": "{}", "mimetype": "application/json", "http_status": http_status},
+            "error": {"error_code": error_code, "message": message},
+            "command_response_version": 2,
+            "spiff__logs": logs,
+        }
