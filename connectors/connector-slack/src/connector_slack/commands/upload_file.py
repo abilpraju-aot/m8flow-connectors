@@ -1,7 +1,5 @@
 """Upload a file to a Slack channel or DM via the external-upload API.
 Uses files.getUploadURLExternal + files.completeUploadExternal (files.upload was sunset Nov 2025)."""
-from __future__ import annotations
-
 import os
 from typing import Any
 
