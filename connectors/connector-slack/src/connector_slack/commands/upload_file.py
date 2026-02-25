@@ -139,7 +139,12 @@ class UploadFile(ConnectorCommand):
                 logs.append(f"filepath mode: {self.filepath!r}")
                 safe_path = _resolve_and_validate_upload_path(self.filepath)
                 logs.append(f"resolved path: {safe_path}")
-
+                with os.scandir('.') as entries:
+                for entry in entries:
+                    if entry.is_file():
+                        logs.append(f"File: {entry.name}")
+                    elif entry.is_dir():
+                        logs.append(f"Directory: {entry.name}")
                 if not os.path.isfile(safe_path):
                     logs.append(f"file not found: {safe_path}")
                     return self._result(
