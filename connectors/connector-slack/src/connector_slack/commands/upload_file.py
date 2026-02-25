@@ -1,5 +1,7 @@
 """Upload a file to a Slack channel or DM via the external-upload API.
 Uses files.getUploadURLExternal + files.completeUploadExternal (files.upload was sunset Nov 2025)."""
+import base64
+import binascii
 import os
 from typing import Any
 
@@ -86,6 +88,23 @@ def _enforce_upload_limit(filename: str, size_bytes: int, limit_bytes: int) -> N
         )
 
 
+def _estimated_base64_decoded_size(b64_text: str) -> int:
+    """Estimate decoded size without decoding.
+
+    This allows enforcing size limits before allocating memory for large payloads.
+    Formula: decoded_bytes ~= (len(cleaned) * 3 / 4) - padding
+    """
+    s = "".join(str(b64_text).split())
+    if not s:
+        return 0
+    padding = 0
+    if s.endswith("=="):
+        padding = 2
+    elif s.endswith("="):
+        padding = 1
+    return (len(s) * 3) // 4 - padding
+
+
 class UploadFile(ConnectorCommand):
     """Upload a file to a Slack channel or DM."""
 
@@ -97,6 +116,7 @@ class UploadFile(ConnectorCommand):
         filename: str = "",
         initial_comment: str = "",
         filepath: str = "",
+        content_base64: str = "",
     ):
         self.token = token
         self.channel = channel
@@ -104,6 +124,7 @@ class UploadFile(ConnectorCommand):
         self.filename = filename or ""
         self.initial_comment = initial_comment or ""
         self.filepath = filepath or ""
+        self.content_base64 = content_base64 or ""
 
     def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
         logs: list[str] = []
@@ -137,6 +158,21 @@ class UploadFile(ConnectorCommand):
                     content_bytes = f.read()
 
                 _enforce_upload_limit(effective_filename, len(content_bytes), limit_bytes)
+            elif self.content_base64:
+                effective_filename = self.filename or "upload.bin"
+                logs.append(f"base64 mode: decoding content for {effective_filename!r}")
+                est = _estimated_base64_decoded_size(self.content_base64)
+                _enforce_upload_limit(effective_filename, est, limit_bytes)
+                try:
+                    content_bytes = base64.b64decode(self.content_base64, validate=True)
+                except binascii.Error as exc:
+                    logs.append(f"base64 decode error: {exc}")
+                    return self._result(
+                        logs, 400, "SlackInvalidBase64",
+                        f"Invalid base64 content: {exc}",
+                    )
+                _enforce_upload_limit(effective_filename, len(content_bytes), limit_bytes)
+                logs.append(f"base64 mode: {effective_filename} ({len(content_bytes)} bytes)")
             else:
                 if not self.content.strip():
                     logs.append("content mode: empty content")

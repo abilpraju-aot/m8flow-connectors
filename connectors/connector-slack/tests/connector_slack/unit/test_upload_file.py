@@ -1,9 +1,11 @@
+import base64
 import os
 from unittest.mock import patch
 
 from connector_slack.commands.upload_file import (
     UPLOAD_LIMIT_ENV,
     UploadFile,
+    _estimated_base64_decoded_size,
     _get_upload_limit_bytes,
 )
 
@@ -257,3 +259,111 @@ class TestUploadFileSpiffLogs:
             m_url.return_value = ({}, 403, {"error_code": "SlackPermissionError", "message": "missing_scope"})
             r = UploadFile("tok", "C1", "data", "x.txt").execute({}, {})
             assert "spiff__logs" in r
+
+
+class TestUploadFileBase64:
+    """Tests for base64 content upload."""
+
+    def test_base64_success(self) -> None:
+        """Valid base64 content uploads successfully."""
+        binary_data = b"\x00\x01\x02\xff\xfe\xfd"
+        b64_content = base64.b64encode(binary_data).decode("ascii")
+
+        with patch(GET_URL) as m_url, patch(UPLOAD_BYTES) as m_up, patch(COMPLETE) as m_done:
+            _mock_success(m_url, m_up, m_done)
+            r = UploadFile(
+                "tok", "C1", filename="binary.bin", content_base64=b64_content,
+            ).execute({}, {})
+
+            assert r["error"] is None
+            assert r["command_response"]["http_status"] == 200
+            m_url.assert_called_once_with("tok", "binary.bin", len(binary_data))
+            m_up.assert_called_once_with(
+                "https://files.slack.com/upload/v1/abc", "binary.bin", binary_data,
+            )
+
+    def test_base64_invalid_returns_error(self) -> None:
+        """Invalid base64 content returns structured error."""
+        r = UploadFile(
+            "tok", "C1", filename="bad.bin", content_base64="not-valid-base64!!!",
+        ).execute({}, {})
+
+        assert r["error"] is not None
+        assert r["error"]["error_code"] == "SlackInvalidBase64"
+        assert "Invalid base64" in r["error"]["message"]
+        assert "spiff__logs" in r
+
+    def test_base64_exceeds_limit(self) -> None:
+        """Size limit is enforced on base64 content."""
+        large_data = b"x" * (51 * 1024 * 1024)
+        b64_content = base64.b64encode(large_data).decode("ascii")
+
+        r = UploadFile(
+            "tok", "C1", filename="huge.bin", content_base64=b64_content,
+        ).execute({}, {})
+
+        assert r["error"] is not None
+        assert r["error"]["error_code"] == "ValueError"
+        assert "too large" in r["error"]["message"]
+
+    def test_base64_default_filename(self) -> None:
+        """Uses 'upload.bin' when no filename provided for base64 content."""
+        b64_content = base64.b64encode(b"test data").decode("ascii")
+
+        with patch(GET_URL) as m_url, patch(UPLOAD_BYTES) as m_up, patch(COMPLETE) as m_done:
+            _mock_success(m_url, m_up, m_done)
+            UploadFile("tok", "C1", content_base64=b64_content).execute({}, {})
+            assert m_url.call_args[0][1] == "upload.bin"
+
+    def test_base64_includes_logs(self) -> None:
+        """Verify spiff__logs is present for base64 uploads."""
+        b64_content = base64.b64encode(b"hello").decode("ascii")
+
+        with patch(GET_URL) as m_url, patch(UPLOAD_BYTES) as m_up, patch(COMPLETE) as m_done:
+            _mock_success(m_url, m_up, m_done)
+            r = UploadFile("tok", "C1", content_base64=b64_content).execute({}, {})
+            assert "spiff__logs" in r
+            assert any("base64 mode" in log for log in r["spiff__logs"])
+
+    def test_base64_priority_over_content(self) -> None:
+        """base64 content takes priority over plain text content."""
+        b64_content = base64.b64encode(b"binary").decode("ascii")
+
+        with patch(GET_URL) as m_url, patch(UPLOAD_BYTES) as m_up, patch(COMPLETE) as m_done:
+            _mock_success(m_url, m_up, m_done)
+            r = UploadFile(
+                "tok", "C1", content="plain text", content_base64=b64_content,
+            ).execute({}, {})
+
+            assert r["error"] is None
+            m_up.assert_called_once_with(
+                "https://files.slack.com/upload/v1/abc", "upload.bin", b"binary",
+            )
+
+
+class TestEstimatedBase64DecodedSize:
+    """Tests for the _estimated_base64_decoded_size helper function."""
+
+    def test_empty_string(self) -> None:
+        assert _estimated_base64_decoded_size("") == 0
+
+    def test_no_padding(self) -> None:
+        data = b"abc"
+        b64 = base64.b64encode(data).decode("ascii")
+        assert _estimated_base64_decoded_size(b64) == len(data)
+
+    def test_single_padding(self) -> None:
+        data = b"ab"
+        b64 = base64.b64encode(data).decode("ascii")
+        assert _estimated_base64_decoded_size(b64) == len(data)
+
+    def test_double_padding(self) -> None:
+        data = b"a"
+        b64 = base64.b64encode(data).decode("ascii")
+        assert _estimated_base64_decoded_size(b64) == len(data)
+
+    def test_with_whitespace(self) -> None:
+        data = b"hello world"
+        b64 = base64.b64encode(data).decode("ascii")
+        b64_with_spaces = " ".join(b64[i:i+4] for i in range(0, len(b64), 4))
+        assert _estimated_base64_decoded_size(b64_with_spaces) == len(data)
