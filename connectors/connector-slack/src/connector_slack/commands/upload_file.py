@@ -53,11 +53,6 @@ def _resolve_and_validate_upload_path(path_value: str) -> str:
 
     allowed_root = os.path.realpath(ATTACHMENTS_DIR)
 
-    if os.name != "nt" and (":" in path_value[:3] or path_value.startswith("\\\\")):
-        raise ValueError(
-            f"Upload path must be under '{allowed_root}'. Windows/UNC paths are not allowed: {path_value!r}"
-        )
-
     if not os.path.isabs(path_value):
         raise ValueError(
             f"Upload path must be an absolute path under '{allowed_root}'. Got: {path_value!r}"
@@ -65,12 +60,7 @@ def _resolve_and_validate_upload_path(path_value: str) -> str:
 
     candidate = os.path.realpath(path_value)
 
-    try:
-        common = os.path.commonpath([allowed_root, candidate])
-    except ValueError:
-        raise ValueError(f"Upload path is invalid: {path_value!r}")
-
-    if common != allowed_root:
+    if candidate != allowed_root and not candidate.startswith(allowed_root + os.sep):
         raise ValueError(
             f"Upload path must be under '{allowed_root}'. Got: {path_value!r}"
         )

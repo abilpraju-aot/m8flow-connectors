@@ -208,6 +208,20 @@ class TestUploadFileFromPath:
         assert r["error"] is not None
         assert r["error"]["error_code"] == "ValueError"
 
+    def test_filepath_prefix_overlap_rejected(self, tmp_path) -> None:
+        """A dir like /slack_attachments_evil must not pass when allowed is /slack_attachments."""
+        allowed = str(tmp_path / "uploads")
+        (tmp_path / "uploads").mkdir()
+        evil_dir = tmp_path / "uploads_evil"
+        evil_dir.mkdir()
+        evil_file = evil_dir / "steal.txt"
+        evil_file.write_bytes(b"gotcha")
+
+        with self._patch_allowed_dir(allowed):
+            r = UploadFile("tok", "C1", filepath=str(evil_file)).execute({}, {})
+            assert r["error"] is not None
+            assert r["error"]["error_code"] == "ValueError"
+
     def test_filepath_oserror_caught(self, tmp_path) -> None:
         """OSError during file read must return a structured error, not a 500."""
         allowed = str(tmp_path)
