@@ -1,1 +1,1 @@
-"""Tests for connector_stripe package."""
+"""Connector stripe tests."""

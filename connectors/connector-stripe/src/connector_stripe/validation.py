@@ -1,144 +1,127 @@
-"""Validation helpers for Stripe command inputs."""
+"""Input validation helpers for Stripe connector."""
 import json
+import re
 from typing import Any
 
-
-class ValidationError(Exception):
-    """Raised for command input validation failures."""
+CURRENCY_PATTERN = re.compile(r"^[a-zA-Z]{3}$")
 
 
-def require_non_empty(name: str, value: str) -> str:
-    """Ensure value is a non-empty string."""
-    out = str(value).strip() if value is not None else ""
-    if not out:
-        raise ValidationError(f"{name} is required.")
-    return out
+class StripeValidationError(Exception):
+    """Raised when input validation fails."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
 
 
-def parse_positive_int(name: str, value: str) -> int:
-    """Parse a positive integer from string/number."""
-    raw = str(value).strip() if value is not None else ""
-    if not raw:
-        raise ValidationError(f"{name} is required.")
+def validate_amount(amount: str) -> int:
+    """Validate and parse amount string to integer (smallest currency unit).
+
+    Raises StripeValidationError if invalid.
+    """
+    if not amount or not amount.strip():
+        raise StripeValidationError("Amount is required")
+
     try:
-        parsed = int(raw)
-    except (TypeError, ValueError) as exc:
-        raise ValidationError(f"{name} must be an integer.") from exc
-    if parsed <= 0:
-        raise ValidationError(f"{name} must be greater than 0.")
-    return parsed
+        amount_int = int(amount.strip())
+    except ValueError as exc:
+        raise StripeValidationError(f"Amount must be a valid integer, got: {amount}") from exc
 
+    if amount_int <= 0:
+        raise StripeValidationError(f"Amount must be positive, got: {amount_int}")
 
-def parse_optional_positive_int(name: str, value: str) -> int | None:
-    """Parse optional positive int; empty string means None."""
-    raw = str(value).strip() if value is not None else ""
-    if not raw:
-        return None
-    return parse_positive_int(name, raw)
+    return amount_int
 
 
 def validate_currency(currency: str) -> str:
-    """Validate and normalize ISO currency code."""
-    out = require_non_empty("currency", currency).lower()
-    if len(out) != 3 or not out.isalpha():
-        raise ValidationError("currency must be a 3-letter ISO code (e.g. usd).")
-    return out
+    """Validate currency is a 3-letter ISO code.
+
+    Raises StripeValidationError if invalid.
+    """
+    if not currency or not currency.strip():
+        raise StripeValidationError("Currency is required")
+
+    currency = currency.strip().lower()
+    if not CURRENCY_PATTERN.match(currency):
+        raise StripeValidationError(f"Currency must be a 3-letter ISO code, got: {currency}")
+
+    return currency
 
 
-def parse_bool(value: str, default: bool = False) -> bool:
-    """Parse a bool from common string values."""
-    raw = str(value).strip().lower() if value is not None else ""
-    if not raw:
+def validate_required(value: str, field_name: str) -> str:
+    """Validate a required string field is not empty.
+
+    Raises StripeValidationError if empty.
+    """
+    if not value or not value.strip():
+        raise StripeValidationError(f"{field_name} is required")
+    return value.strip()
+
+
+def validate_optional_json(json_str: str, field_name: str) -> dict[str, Any] | None:
+    """Validate and parse optional JSON string.
+
+    Returns None if empty, parsed dict if valid.
+    Raises StripeValidationError if invalid JSON.
+    """
+    if not json_str or not json_str.strip():
+        return None
+
+    try:
+        parsed = json.loads(json_str)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise StripeValidationError(f"Invalid JSON for {field_name}: {exc}") from exc
+
+    if not isinstance(parsed, dict):
+        raise StripeValidationError(f"{field_name} must be a JSON object, got: {type(parsed).__name__}")
+
+    return parsed
+
+
+def validate_boolean_string(value: str, default: bool = False) -> bool:
+    """Parse a boolean string value.
+
+    Accepts: 'true', 'false', '1', '0', 'yes', 'no' (case-insensitive).
+    Returns default if empty.
+    """
+    if not value or not value.strip():
         return default
-    if raw in ("true", "1", "yes", "y"):
+
+    value = value.strip().lower()
+    if value in ("true", "1", "yes"):
         return True
-    if raw in ("false", "0", "no", "n"):
+    if value in ("false", "0", "no"):
         return False
+
     return default
 
 
-def parse_metadata_json(metadata: str) -> dict[str, str]:
-    """Parse metadata JSON as string dict with Stripe limits enforced.
+def validate_stripe_id(value: str, prefix: str, field_name: str) -> str:
+    """Validate a Stripe ID has the expected prefix.
 
-    Stripe limits:
-    - Max 50 key-value pairs
-    - Keys max 40 characters
-    - Values max 500 characters
+    Raises StripeValidationError if invalid.
     """
-    raw = str(metadata).strip() if metadata is not None else ""
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except (TypeError, ValueError) as exc:
-        raise ValidationError(f"Invalid metadata JSON: {exc}") from exc
-    if not isinstance(parsed, dict):
-        raise ValidationError("metadata must be a JSON object.")
-    if len(parsed) > 50:
-        raise ValidationError("metadata cannot have more than 50 key-value pairs.")
-    out: dict[str, str] = {}
-    for key, value in parsed.items():
-        str_key = str(key)
-        str_value = str(value)
-        if len(str_key) > 40:
-            raise ValidationError(f"metadata key '{str_key[:20]}...' exceeds 40 characters.")
-        if len(str_value) > 500:
-            raise ValidationError(f"metadata value for '{str_key}' exceeds 500 characters.")
-        out[str_key] = str_value
-    return out
+    if not value or not value.strip():
+        raise StripeValidationError(f"{field_name} is required")
+
+    value = value.strip()
+    if not value.startswith(prefix):
+        raise StripeValidationError(f"{field_name} must start with '{prefix}', got: {value[:20]}...")
+
+    return value
 
 
-VALID_REFUND_REASONS = frozenset({"duplicate", "fraudulent", "requested_by_customer"})
+def validate_optional_stripe_id(value: str, prefix: str, field_name: str) -> str | None:
+    """Validate an optional Stripe ID has the expected prefix if provided.
 
-
-def validate_refund_reason(reason: str) -> str | None:
-    """Validate Stripe refund reason. Returns None if empty, validated reason otherwise."""
-    cleaned = str(reason).strip() if reason else ""
-    if not cleaned:
+    Returns None if empty.
+    Raises StripeValidationError if provided but invalid.
+    """
+    if not value or not value.strip():
         return None
-    if cleaned not in VALID_REFUND_REASONS:
-        raise ValidationError(
-            f"Invalid refund reason '{cleaned}'. "
-            f"Must be one of: {', '.join(sorted(VALID_REFUND_REASONS))}"
-        )
-    return cleaned
 
+    value = value.strip()
+    if not value.startswith(prefix):
+        raise StripeValidationError(f"{field_name} must start with '{prefix}', got: {value[:20]}...")
 
-def parse_refund_reference(charge_id: str, payment_intent_id: str) -> tuple[str | None, str | None]:
-    """Require exactly one of charge_id or payment_intent_id."""
-    charge = str(charge_id).strip() if charge_id is not None else ""
-    payment_intent = str(payment_intent_id).strip() if payment_intent_id is not None else ""
-    if bool(charge) == bool(payment_intent):
-        raise ValidationError("Provide exactly one of charge_id or payment_intent_id.")
-    return (charge or None, payment_intent or None)
-
-
-def ensure_idempotency_key_length(idempotency_key: str) -> str:
-    """Validate max Stripe idempotency key length."""
-    key = str(idempotency_key).strip() if idempotency_key is not None else ""
-    if key and len(key) > 255:
-        raise ValidationError("idempotency_key must be 255 characters or fewer.")
-    return key
-
-
-def to_form_payload(data: dict[str, Any], prefix: str = "") -> dict[str, str]:
-    """Flatten a nested dict/list payload into Stripe form-encoded key/value pairs."""
-    out: dict[str, str] = {}
-    for key, value in data.items():
-        if value is None:
-            continue
-        full_key = f"{prefix}[{key}]" if prefix else str(key)
-        if isinstance(value, dict):
-            out.update(to_form_payload(value, full_key))
-        elif isinstance(value, list):
-            for idx, item in enumerate(value):
-                list_key = f"{full_key}[{idx}]"
-                if isinstance(item, dict):
-                    out.update(to_form_payload(item, list_key))
-                else:
-                    out[list_key] = str(item)
-        elif isinstance(value, bool):
-            out[full_key] = "true" if value else "false"
-        else:
-            out[full_key] = str(value)
-    return out
+    return value

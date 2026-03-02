@@ -1,81 +1,76 @@
-"""Create a Stripe Subscription."""
+"""Create a Stripe Subscription for recurring billing."""
 from typing import Any
 
 from connector_stripe.connector_interface import ConnectorCommand
 from connector_stripe.connector_interface import ConnectorProxyResponseDict
 from connector_stripe.stripe_client import build_result
 from connector_stripe.stripe_client import error_response
-from connector_stripe.stripe_client import request_form
-from connector_stripe.stripe_client import resolve_idempotency_key
-from connector_stripe.validation import ValidationError
-from connector_stripe.validation import ensure_idempotency_key_length
-from connector_stripe.validation import parse_metadata_json
-from connector_stripe.validation import parse_optional_positive_int
-from connector_stripe.validation import parse_positive_int
-from connector_stripe.validation import require_non_empty
-from connector_stripe.validation import to_form_payload
+from connector_stripe.stripe_client import generate_idempotency_key
+from connector_stripe.stripe_client import post
+from connector_stripe.validation import StripeValidationError
+from connector_stripe.validation import validate_optional_json
+from connector_stripe.validation import validate_required
+from connector_stripe.validation import validate_stripe_id
 
 
 class CreateSubscription(ConnectorCommand):
-    """Create a Stripe subscription for a customer and price."""
+    """Create a Stripe Subscription for recurring billing."""
 
     def __init__(
         self,
         api_key: str,
         customer_id: str,
         price_id: str,
-        quantity: str = "1",
-        payment_method: str = "",
-        trial_period_days: str = "",
-        metadata: str = "{}",
+        payment_behavior: str = "default_incomplete",
+        default_payment_method: str = "",
+        metadata: str = "",
         idempotency_key: str = "",
     ):
+        """
+        :param api_key: Stripe secret API key (sk_test_... or sk_live_...).
+        :param customer_id: Stripe customer ID (cus_...).
+        :param price_id: Stripe price ID (price_...) for the subscription item.
+        :param payment_behavior: Payment behavior (default_incomplete, error_if_incomplete, allow_incomplete).
+        :param default_payment_method: Optional default payment method ID (pm_...).
+        :param metadata: Optional JSON string of metadata key-value pairs.
+        :param idempotency_key: Optional unique key to prevent duplicate operations.
+        """
         self.api_key = api_key
         self.customer_id = customer_id
         self.price_id = price_id
-        self.quantity = quantity or "1"
-        self.payment_method = payment_method or ""
-        self.trial_period_days = trial_period_days or ""
-        self.metadata = metadata or "{}"
-        self.idempotency_key = idempotency_key or ""
+        self.payment_behavior = payment_behavior
+        self.default_payment_method = default_payment_method
+        self.metadata = metadata
+        self.idempotency_key = idempotency_key
 
-    def execute(self, _config: Any, task_data: Any) -> ConnectorProxyResponseDict:
+    def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
         try:
-            api_key = require_non_empty("api_key", self.api_key)
-            customer_id = require_non_empty("customer_id", self.customer_id)
-            price_id = require_non_empty("price_id", self.price_id)
-            quantity = parse_positive_int("quantity", self.quantity)
-            trial_period_days = parse_optional_positive_int("trial_period_days", self.trial_period_days)
-            metadata = parse_metadata_json(self.metadata)
-            idempotency_key = ensure_idempotency_key_length(self.idempotency_key)
+            customer_id = validate_stripe_id(self.customer_id, "cus_", "customer_id")
+            price_id = validate_stripe_id(self.price_id, "price_", "price_id")
+            payment_behavior = validate_required(self.payment_behavior, "payment_behavior")
+            metadata = validate_optional_json(self.metadata, "metadata")
+        except StripeValidationError as exc:
+            return error_response(400, "StripeValidationError", exc.message)
 
-            payload: dict[str, Any] = {
-                "customer": customer_id,
-                "items": [{"price": price_id, "quantity": quantity}],
-            }
-            if self.payment_method.strip():
-                payload["default_payment_method"] = self.payment_method.strip()
-            if trial_period_days is not None:
-                payload["trial_period_days"] = trial_period_days
-            if metadata:
-                payload["metadata"] = metadata
+        valid_behaviors = ("default_incomplete", "error_if_incomplete", "allow_incomplete", "pending_if_incomplete")
+        if payment_behavior not in valid_behaviors:
+            return error_response(
+                400,
+                "StripeValidationError",
+                f"payment_behavior must be one of {valid_behaviors}, got: {payment_behavior}",
+            )
 
-            final_idempotency_key = resolve_idempotency_key(
-                idempotency_key,
-                "create_subscription",
-                payload,
-                task_data,
-            )
-            form_data = to_form_payload(payload)
-            data, status, err = request_form(
-                "POST",
-                "subscriptions",
-                api_key,
-                form_data=form_data,
-                idempotency_key=final_idempotency_key,
-            )
-            return build_result(data or {}, status, err)
-        except ValidationError as exc:
-            return error_response(400, "StripeValidationError", str(exc))
-        except Exception as exc:
-            return error_response(500, "StripeApiError", f"{exc.__class__.__name__}: {exc}")
+        data: dict[str, Any] = {
+            "customer": customer_id,
+            "items[0][price]": price_id,
+            "payment_behavior": payment_behavior,
+        }
+
+        if self.default_payment_method.strip():
+            data["default_payment_method"] = self.default_payment_method.strip()
+        if metadata:
+            data["metadata"] = metadata
+
+        idempotency_key = self.idempotency_key.strip() or generate_idempotency_key()
+        response_json, status, error = post("subscriptions", self.api_key, data, idempotency_key)
+        return build_result(response_json, status, error)

@@ -1,62 +1,60 @@
-"""Cancel a Stripe subscription."""
+"""Cancel a Stripe Subscription."""
 from typing import Any
 
 from connector_stripe.connector_interface import ConnectorCommand
 from connector_stripe.connector_interface import ConnectorProxyResponseDict
 from connector_stripe.stripe_client import build_result
+from connector_stripe.stripe_client import delete
 from connector_stripe.stripe_client import error_response
-from connector_stripe.stripe_client import request_form
-from connector_stripe.stripe_client import resolve_idempotency_key
-from connector_stripe.validation import ValidationError
-from connector_stripe.validation import ensure_idempotency_key_length
-from connector_stripe.validation import parse_bool
-from connector_stripe.validation import require_non_empty
-from connector_stripe.validation import to_form_payload
+from connector_stripe.stripe_client import generate_idempotency_key
+from connector_stripe.stripe_client import post
+from connector_stripe.validation import StripeValidationError
+from connector_stripe.validation import validate_boolean_string
+from connector_stripe.validation import validate_stripe_id
 
 
 class CancelSubscription(ConnectorCommand):
-    """Cancel a Stripe subscription by ID."""
+    """Cancel a Stripe Subscription immediately or at period end."""
 
     def __init__(
         self,
         api_key: str,
         subscription_id: str,
-        invoice_now: str = "false",
-        prorate: str = "true",
+        cancel_at_period_end: str = "false",
         idempotency_key: str = "",
     ):
+        """
+        :param api_key: Stripe secret API key (sk_test_... or sk_live_...).
+        :param subscription_id: Stripe subscription ID (sub_...) to cancel.
+        :param cancel_at_period_end: If true, cancel at end of billing period; if false, cancel immediately.
+        :param idempotency_key: Optional unique key to prevent duplicate operations.
+        """
         self.api_key = api_key
         self.subscription_id = subscription_id
-        self.invoice_now = invoice_now or "false"
-        self.prorate = prorate or "true"
-        self.idempotency_key = idempotency_key or ""
+        self.cancel_at_period_end = cancel_at_period_end
+        self.idempotency_key = idempotency_key
 
-    def execute(self, _config: Any, task_data: Any) -> ConnectorProxyResponseDict:
+    def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
         try:
-            api_key = require_non_empty("api_key", self.api_key)
-            subscription_id = require_non_empty("subscription_id", self.subscription_id)
-            idempotency_key = ensure_idempotency_key_length(self.idempotency_key)
+            subscription_id = validate_stripe_id(self.subscription_id, "sub_", "subscription_id")
+        except StripeValidationError as exc:
+            return error_response(400, "StripeValidationError", exc.message)
 
-            payload: dict[str, Any] = {
-                "invoice_now": parse_bool(self.invoice_now, default=False),
-                "prorate": parse_bool(self.prorate, default=True),
-            }
-            final_idempotency_key = resolve_idempotency_key(
-                idempotency_key,
-                "cancel_subscription",
-                {"subscription_id": subscription_id, **payload},
-                task_data,
-            )
-            form_data = to_form_payload(payload)
-            data, status, err = request_form(
-                "DELETE",
+        cancel_at_period_end = validate_boolean_string(self.cancel_at_period_end, default=False)
+        idempotency_key = self.idempotency_key.strip() or generate_idempotency_key()
+
+        if cancel_at_period_end:
+            data = {"cancel_at_period_end": "true"}
+            response_json, status, error = post(
                 f"subscriptions/{subscription_id}",
-                api_key,
-                form_data=form_data,
-                idempotency_key=final_idempotency_key,
+                self.api_key,
+                data,
+                idempotency_key,
             )
-            return build_result(data or {}, status, err)
-        except ValidationError as exc:
-            return error_response(400, "StripeValidationError", str(exc))
-        except Exception as exc:
-            return error_response(500, "StripeApiError", f"{exc.__class__.__name__}: {exc}")
+        else:
+            response_json, status, error = delete(
+                f"subscriptions/{subscription_id}",
+                self.api_key,
+            )
+
+        return build_result(response_json, status, error)

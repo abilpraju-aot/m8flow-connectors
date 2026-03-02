@@ -1,24 +1,21 @@
-"""Issue a Stripe refund (full or partial)."""
+"""Issue a Stripe Refund for a charge or payment intent."""
+import json
 from typing import Any
 
 from connector_stripe.connector_interface import ConnectorCommand
 from connector_stripe.connector_interface import ConnectorProxyResponseDict
 from connector_stripe.stripe_client import build_result
 from connector_stripe.stripe_client import error_response
-from connector_stripe.stripe_client import request_form
-from connector_stripe.stripe_client import resolve_idempotency_key
-from connector_stripe.validation import ValidationError
-from connector_stripe.validation import ensure_idempotency_key_length
-from connector_stripe.validation import parse_metadata_json
-from connector_stripe.validation import parse_optional_positive_int
-from connector_stripe.validation import parse_refund_reference
-from connector_stripe.validation import require_non_empty
-from connector_stripe.validation import to_form_payload
-from connector_stripe.validation import validate_refund_reason
+from connector_stripe.stripe_client import generate_idempotency_key
+from connector_stripe.stripe_client import post
+from connector_stripe.validation import StripeValidationError
+from connector_stripe.validation import validate_optional_stripe_id
+
+VALID_REFUND_REASONS = ("duplicate", "fraudulent", "requested_by_customer")
 
 
 class IssueRefund(ConnectorCommand):
-    """Issue a Stripe refund using charge or payment intent reference."""
+    """Issue a full or partial refund for a Stripe charge or payment intent."""
 
     def __init__(
         self,
@@ -27,54 +24,75 @@ class IssueRefund(ConnectorCommand):
         payment_intent_id: str = "",
         amount: str = "",
         reason: str = "",
-        metadata: str = "{}",
+        metadata: str = "",
         idempotency_key: str = "",
     ):
+        """
+        :param api_key: Stripe secret API key (sk_test_... or sk_live_...).
+        :param charge_id: Stripe charge ID (ch_...) to refund. Either charge_id or payment_intent_id required.
+        :param payment_intent_id: Stripe payment intent ID (pi_...) to refund.
+        :param amount: Optional amount to refund in smallest currency unit. If empty, full refund.
+        :param reason: Optional reason (duplicate, fraudulent, requested_by_customer).
+        :param metadata: Optional JSON string of metadata key-value pairs.
+        :param idempotency_key: Optional unique key to prevent duplicate operations.
+        """
         self.api_key = api_key
-        self.charge_id = charge_id or ""
-        self.payment_intent_id = payment_intent_id or ""
-        self.amount = amount or ""
-        self.reason = reason or ""
-        self.metadata = metadata or "{}"
-        self.idempotency_key = idempotency_key or ""
+        self.charge_id = charge_id
+        self.payment_intent_id = payment_intent_id
+        self.amount = amount
+        self.reason = reason
+        self.metadata = metadata
+        self.idempotency_key = idempotency_key
 
-    def execute(self, _config: Any, task_data: Any) -> ConnectorProxyResponseDict:
+    def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
         try:
-            api_key = require_non_empty("api_key", self.api_key)
-            charge_id, payment_intent_id = parse_refund_reference(self.charge_id, self.payment_intent_id)
-            amount = parse_optional_positive_int("amount", self.amount)
-            metadata = parse_metadata_json(self.metadata)
-            idempotency_key = ensure_idempotency_key_length(self.idempotency_key)
+            charge_id = validate_optional_stripe_id(self.charge_id, "ch_", "charge_id")
+            payment_intent_id = validate_optional_stripe_id(self.payment_intent_id, "pi_", "payment_intent_id")
+        except StripeValidationError as exc:
+            return error_response(400, "StripeValidationError", exc.message)
 
-            payload: dict[str, Any] = {}
-            if charge_id:
-                payload["charge"] = charge_id
-            if payment_intent_id:
-                payload["payment_intent"] = payment_intent_id
-            if amount is not None:
-                payload["amount"] = amount
-            reason = validate_refund_reason(self.reason)
-            if reason:
-                payload["reason"] = reason
-            if metadata:
-                payload["metadata"] = metadata
+        if not charge_id and not payment_intent_id:
+            return error_response(
+                400,
+                "StripeValidationError",
+                "Either charge_id or payment_intent_id is required",
+            )
 
-            final_idempotency_key = resolve_idempotency_key(
-                idempotency_key,
-                "issue_refund",
-                payload,
-                task_data,
-            )
-            form_data = to_form_payload(payload)
-            data, status, err = request_form(
-                "POST",
-                "refunds",
-                api_key,
-                form_data=form_data,
-                idempotency_key=final_idempotency_key,
-            )
-            return build_result(data or {}, status, err)
-        except ValidationError as exc:
-            return error_response(400, "StripeValidationError", str(exc))
-        except Exception as exc:
-            return error_response(500, "StripeApiError", f"{exc.__class__.__name__}: {exc}")
+        data: dict[str, Any] = {}
+
+        if charge_id:
+            data["charge"] = charge_id
+        if payment_intent_id:
+            data["payment_intent"] = payment_intent_id
+
+        if self.amount.strip():
+            try:
+                amount_int = int(self.amount.strip())
+                if amount_int <= 0:
+                    return error_response(400, "StripeValidationError", f"Refund amount must be positive, got: {amount_int}")
+                data["amount"] = amount_int
+            except ValueError:
+                return error_response(400, "StripeValidationError", f"Refund amount must be a valid integer, got: {self.amount}")
+
+        if self.reason.strip():
+            reason = self.reason.strip().lower()
+            if reason not in VALID_REFUND_REASONS:
+                return error_response(
+                    400,
+                    "StripeValidationError",
+                    f"reason must be one of {VALID_REFUND_REASONS}, got: {reason}",
+                )
+            data["reason"] = reason
+
+        if self.metadata.strip():
+            try:
+                metadata = json.loads(self.metadata)
+                if not isinstance(metadata, dict):
+                    return error_response(400, "StripeValidationError", "metadata must be a JSON object")
+                data["metadata"] = metadata
+            except (json.JSONDecodeError, TypeError) as exc:
+                return error_response(400, "StripeValidationError", f"Invalid JSON for metadata: {exc}")
+
+        idempotency_key = self.idempotency_key.strip() or generate_idempotency_key()
+        response_json, status, error = post("refunds", self.api_key, data, idempotency_key)
+        return build_result(response_json, status, error)

@@ -1,4 +1,4 @@
-"""Local connector interface for m8flow Stripe connector."""
+"""Local connector interface for m8flow Stripe connector (no Spiff dependency)."""
 from abc import ABC
 from abc import abstractmethod
 from typing import Any
@@ -29,7 +29,7 @@ class ConnectorProxyResponseDict(TypedDict, total=False):
 
 
 class ConnectorCommand(ABC):
-    """Base for m8flow Stripe connector commands. Uses Stripe API key auth."""
+    """Base for m8flow Stripe connector commands. Uses Stripe API key; obtain and store via m8flow/platform."""
 
     @abstractmethod
     def execute(self, config: Any, task_data: Any) -> ConnectorProxyResponseDict:
