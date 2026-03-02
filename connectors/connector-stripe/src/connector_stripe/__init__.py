@@ -1,0 +1,1 @@
+"""Stripe connector for m8flow: payment intents, charges, subscriptions, and refunds."""
