@@ -11,12 +11,12 @@ SLACK_URL = "https://slack.com/api/chat.postMessage"
 class SendDirectMessage(ConnectorCommand):
     """Send a direct message to a Slack user. User selector is by ID only."""
 
-    def __init__(self, token: str, user_id: str, message: str, blocks: str = ""):
+    def __init__(self, token: str, user_id: str, message: str, blocks: str | list = ""):
         """
         :param token: Slack OAuth access token (from m8flow/platform).
         :param user_id: Slack user ID (e.g. U12345). DM channel is the user ID.
         :param message: Text to send (markdown supported).
-        :param blocks: Optional JSON string of Block Kit blocks array for structured messages.
+        :param blocks: Block Kit blocks as a JSON string or an already-parsed list.
         """
         self.token = token
         self.user_id = user_id
@@ -25,7 +25,9 @@ class SendDirectMessage(ConnectorCommand):
 
     def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
         body: dict[str, Any] = {"channel": self.user_id, "text": self.message}
-        if self.blocks.strip():
+        if isinstance(self.blocks, list):
+            body["blocks"] = self.blocks
+        elif isinstance(self.blocks, str) and self.blocks.strip():
             try:
                 body["blocks"] = json.loads(self.blocks)
             except (json.JSONDecodeError, TypeError) as exc:

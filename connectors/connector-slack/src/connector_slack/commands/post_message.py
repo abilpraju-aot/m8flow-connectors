@@ -11,12 +11,12 @@ SLACK_URL = "https://slack.com/api/chat.postMessage"
 class PostMessage(ConnectorCommand):
     """Send a message to a Slack channel."""
 
-    def __init__(self, token: str, channel: str, message: str, blocks: str = ""):
+    def __init__(self, token: str, channel: str, message: str, blocks: str | list = ""):
         """
         :param token: Slack OAuth access token (from m8flow/platform).
         :param channel: Channel ID (e.g. C123) or name (e.g. #general).
         :param message: Text to post (markdown supported).
-        :param blocks: Optional JSON string of Block Kit blocks array for structured messages.
+        :param blocks: Block Kit blocks as a JSON string or an already-parsed list.
         """
         self.token = token
         self.channel = channel
@@ -25,7 +25,9 @@ class PostMessage(ConnectorCommand):
 
     def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
         body: dict[str, Any] = {"channel": self.channel, "text": self.message}
-        if self.blocks.strip():
+        if isinstance(self.blocks, list):
+            body["blocks"] = self.blocks
+        elif isinstance(self.blocks, str) and self.blocks.strip():
             try:
                 body["blocks"] = json.loads(self.blocks)
             except (json.JSONDecodeError, TypeError) as exc:
