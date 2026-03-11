@@ -1,12 +1,18 @@
 """Shared Slack API client and error normalization. Token is never logged or included in error messages."""
 import json
+import logging
 from typing import Any
 
 import requests  # type: ignore
 
+logger = logging.getLogger(__name__)
+
 from connector_slack.connector_interface import CommandErrorDict, CommandResponseDict, ConnectorProxyResponseDict
 
 DEFAULT_TIMEOUT = 30
+
+SLACK_GET_UPLOAD_URL = "https://slack.com/api/files.getUploadURLExternal"
+SLACK_COMPLETE_UPLOAD_URL = "https://slack.com/api/files.completeUploadExternal"
 
 # Slack error codes that map to connector error codes
 AUTH_ERRORS = ("invalid_auth", "token_revoked", "account_inactive", "not_authed")
@@ -44,6 +50,7 @@ def post_json(url: str, token: str, body: dict[str, Any], timeout: int = DEFAULT
     try:
         response = requests.post(url, headers=headers, json=body, timeout=timeout)
     except Exception as exc:
+        logger.warning("Slack API request failed: %s", exc)
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
     return _parse_slack_json_response(response)
 
@@ -61,6 +68,7 @@ def post_multipart(
     try:
         response = requests.post(url, headers=headers, files=files, data=data, timeout=timeout)
     except Exception as exc:
+        logger.warning("Slack API request failed: %s", exc)
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
     return _parse_slack_json_response(response)
 
@@ -76,10 +84,11 @@ def get_upload_url_external(
         data["snippet_type"] = snippet_type
     try:
         response = requests.post(
-            "https://slack.com/api/files.getUploadURLExternal",
+            SLACK_GET_UPLOAD_URL,
             headers=headers, data=data, timeout=timeout,
         )
     except Exception as exc:
+        logger.warning("Slack API request failed: %s", exc)
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
     return _parse_slack_json_response(response)
 
@@ -96,9 +105,11 @@ def upload_file_bytes(
             timeout=timeout,
         )
     except Exception as exc:
+        logger.warning("Slack API request failed: %s", exc)
         return (500, {"error_code": exc.__class__.__name__, "message": str(exc)})
     if response.status_code == 200:
         return (200, None)
+    logger.warning("Upload to pre-signed URL failed with HTTP %d", response.status_code)
     return (
         response.status_code,
         {"error_code": "SlackUploadFailed", "message": f"Upload to pre-signed URL failed with HTTP {response.status_code}"},
@@ -118,10 +129,11 @@ def complete_upload_external(
         data["initial_comment"] = initial_comment
     try:
         response = requests.post(
-            "https://slack.com/api/files.completeUploadExternal",
+            SLACK_COMPLETE_UPLOAD_URL,
             headers=headers, data=data, timeout=timeout,
         )
     except Exception as exc:
+        logger.warning("Slack API request failed: %s", exc)
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
     return _parse_slack_json_response(response)
 
@@ -144,6 +156,7 @@ def _parse_slack_json_response(response: requests.Response) -> tuple[dict[str, A
     if response_json.get("ok") is True:
         return (response_json, response.status_code, None)
     status_code, error = _slack_error_to_connector_error(response_json, response.status_code)
+    logger.warning("Slack API error: %s", error.get("message"))
     return ({}, status_code, error)
 
 
