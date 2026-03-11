@@ -2,6 +2,7 @@
 name = "connector_stripe"
 version = "1.0.0"
 description = "Stripe connector for m8flow: Payment intents, charges, subscriptions, and refunds with idempotency"
+authors = []
 readme = "README.md"
 packages = [{include = "connector_stripe", from = "src" }]
 

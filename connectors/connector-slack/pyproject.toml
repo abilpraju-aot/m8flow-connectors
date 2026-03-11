@@ -2,6 +2,7 @@
 name = "connector_slack"
 version = "1.0.0"
 description = "Slack connector for m8flow: post message, send DM, upload file"
+authors = []
 readme = "README.md"
 packages = [{include = "connector_slack", from = "src" }]
 
