@@ -1,10 +1,13 @@
 """Shared Stripe API client with idempotency support and error normalization. API key is never logged."""
 import json
+import logging
 import uuid
 from typing import Any
 from urllib.parse import urlencode
 
 import requests  # type: ignore
+
+logger = logging.getLogger(__name__)
 
 from connector_stripe.connector_interface import CommandErrorDict
 from connector_stripe.connector_interface import CommandResponseDict
@@ -170,6 +173,7 @@ def delete(
 
 def error_response(http_status: int, error_code: str, message: str) -> ConnectorProxyResponseDict:
     """Build connector response for a validation or pre-request error."""
+    logger.warning("Validation error [%s]: %s", error_code, message)
     return {
         "command_response": {"body": "{}", "mimetype": "application/json", "http_status": http_status},
         "error": {"error_code": error_code, "message": message},

@@ -14,7 +14,13 @@ from connector_stripe.validation import validate_stripe_id
 
 
 class CreateSubscription(ConnectorCommand):
-    """Create a Stripe Subscription for recurring billing."""
+    """Create a Stripe Subscription for recurring billing.
+
+    Supports two payment flows:
+    - Pass a pre-existing ``default_payment_method`` (pm_xxx), OR
+    - Provide raw card details (card_number, exp_month, exp_year, cvc)
+      which will create and attach a PaymentMethod automatically.
+    """
 
     def __init__(
         self,
@@ -25,16 +31,11 @@ class CreateSubscription(ConnectorCommand):
         default_payment_method: str = "",
         metadata: str = "",
         idempotency_key: str = "",
+        card_number: str = "",
+        exp_month: str = "",
+        exp_year: str = "",
+        cvc: str = "",
     ):
-        """
-        :param api_key: Stripe secret API key (sk_test_... or sk_live_...).
-        :param customer_id: Stripe customer ID (cus_...).
-        :param price_id: Stripe price ID (price_...) for the subscription item.
-        :param payment_behavior: Payment behavior (default_incomplete, error_if_incomplete, allow_incomplete).
-        :param default_payment_method: Optional default payment method ID (pm_...).
-        :param metadata: Optional JSON string of metadata key-value pairs.
-        :param idempotency_key: Optional unique key to prevent duplicate operations.
-        """
         self.api_key = api_key
         self.customer_id = customer_id
         self.price_id = price_id
@@ -42,6 +43,45 @@ class CreateSubscription(ConnectorCommand):
         self.default_payment_method = default_payment_method
         self.metadata = metadata
         self.idempotency_key = idempotency_key
+        self.card_number = card_number
+        self.exp_month = exp_month
+        self.exp_year = exp_year
+        self.cvc = cvc
+
+    def _card_fields_provided(self) -> list[str]:
+        """Return names of non-empty card fields."""
+        fields: list[str] = []
+        for name in ("card_number", "exp_month", "exp_year", "cvc"):
+            if getattr(self, name, "").strip():
+                fields.append(name)
+        return fields
+
+    def _create_and_attach_payment_method(self, customer_id: str) -> tuple[str | None, ConnectorProxyResponseDict | None]:
+        """Create a PaymentMethod from card details and attach it to the customer.
+
+        Returns (pm_id, None) on success or (None, error_response) on failure.
+        """
+        pm_data: dict[str, Any] = {
+            "type": "card",
+            "card[number]": self.card_number.strip(),
+            "card[exp_month]": self.exp_month.strip(),
+            "card[exp_year]": self.exp_year.strip(),
+            "card[cvc]": self.cvc.strip(),
+        }
+        pm_json, pm_status, pm_error = post("payment_methods", self.api_key, pm_data)
+        if pm_error:
+            return None, build_result(pm_json, pm_status, pm_error)
+
+        pm_id = pm_json.get("id", "")
+        if not pm_id:
+            return None, error_response(500, "StripeAPIError", "PaymentMethod created but no id returned")
+
+        attach_data: dict[str, Any] = {"customer": customer_id}
+        attach_json, attach_status, attach_error = post(f"payment_methods/{pm_id}/attach", self.api_key, attach_data)
+        if attach_error:
+            return None, build_result(attach_json, attach_status, attach_error)
+
+        return pm_id, None
 
     def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
         try:
@@ -60,14 +100,32 @@ class CreateSubscription(ConnectorCommand):
                 f"payment_behavior must be one of {valid_behaviors}, got: {payment_behavior}",
             )
 
+        card_fields = self._card_fields_provided()
+        all_card_names = ["card_number", "exp_month", "exp_year", "cvc"]
+        if card_fields and set(card_fields) != set(all_card_names):
+            missing = sorted(set(all_card_names) - set(card_fields))
+            return error_response(
+                400,
+                "StripeValidationError",
+                f"All card fields are required when paying by card. Missing: {', '.join(missing)}",
+            )
+
+        payment_method_id = self.default_payment_method.strip()
+
+        if card_fields:
+            pm_id, err_response = self._create_and_attach_payment_method(customer_id)
+            if err_response:
+                return err_response
+            payment_method_id = pm_id  # type: ignore[assignment]
+
         data: dict[str, Any] = {
             "customer": customer_id,
             "items[0][price]": price_id,
             "payment_behavior": payment_behavior,
         }
 
-        if self.default_payment_method.strip():
-            data["default_payment_method"] = self.default_payment_method.strip()
+        if payment_method_id:
+            data["default_payment_method"] = payment_method_id
         if metadata:
             data["metadata"] = metadata
 
