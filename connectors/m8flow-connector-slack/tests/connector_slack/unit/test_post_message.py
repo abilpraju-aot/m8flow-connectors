@@ -1,7 +1,17 @@
 import json
 from unittest.mock import patch
 
+import pytest
+
 from connector_slack.commands.post_message import PostMessage
+
+VALIDATE = "connector_slack.commands.post_message.validate_token"
+
+
+@pytest.fixture(autouse=True)
+def _bypass_token_validation():
+    with patch(VALIDATE, return_value=None):
+        yield
 
 
 class TestPostMessage:
@@ -86,3 +96,22 @@ class TestPostMessage:
             assert response["error"] is not None
             assert response["error"]["error_code"] == "SlackMessageFailed"
             assert response["error"]["message"] == "[ERROR] missing required field: channel"
+
+
+class TestPostMessageAuthValidation:
+    def test_invalid_token_returns_auth_error(self) -> None:
+        auth_err = {"error_code": "SlackAuthError", "message": "Slack authentication failed or token was revoked."}
+        with patch(VALIDATE, return_value=auth_err):
+            poster = PostMessage("bad-token", "my_channel", "hello world!")
+            response = poster.execute({}, {})
+            assert response["command_response"]["http_status"] == 401
+            assert response["error"] is not None
+            assert response["error"]["error_code"] == "SlackAuthError"
+
+    def test_invalid_token_does_not_call_post_json(self) -> None:
+        auth_err = {"error_code": "SlackAuthError", "message": "Slack authentication failed or token was revoked."}
+        with patch(VALIDATE, return_value=auth_err), \
+             patch("connector_slack.commands.post_message.post_json") as mock_post:
+            poster = PostMessage("bad-token", "C123", "hello")
+            poster.execute({}, {})
+            mock_post.assert_not_called()

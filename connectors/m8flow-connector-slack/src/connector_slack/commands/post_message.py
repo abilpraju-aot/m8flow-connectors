@@ -3,7 +3,7 @@ import json
 from typing import Any
 
 from connector_slack.connector_interface import ConnectorCommand, ConnectorProxyResponseDict
-from connector_slack.slack_client import build_result, error_response, post_json
+from connector_slack.slack_client import build_result, error_response, post_json, validate_token
 
 SLACK_URL = "https://slack.com/api/chat.postMessage"
 
@@ -24,6 +24,9 @@ class PostMessage(ConnectorCommand):
         self.blocks = blocks
 
     def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
+        auth_error = validate_token(self.token)
+        if auth_error is not None:
+            return error_response(401, auth_error["error_code"], auth_error["message"])
         body: dict[str, Any] = {"channel": self.channel, "text": self.message}
         if isinstance(self.blocks, list):
             body["blocks"] = self.blocks

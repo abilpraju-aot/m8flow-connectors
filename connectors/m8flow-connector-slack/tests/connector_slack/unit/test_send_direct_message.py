@@ -1,7 +1,17 @@
 import json
 from unittest.mock import patch
 
+import pytest
+
 from connector_slack.commands.send_direct_message import SendDirectMessage
+
+VALIDATE = "connector_slack.commands.send_direct_message.validate_token"
+
+
+@pytest.fixture(autouse=True)
+def _bypass_token_validation():
+    with patch(VALIDATE, return_value=None):
+        yield
 
 
 class TestSendDirectMessage:
@@ -48,3 +58,22 @@ class TestSendDirectMessage:
             response = cmd.execute({}, {})
             assert response["command_response"]["http_status"] == 400
             assert response["error"]["message"] == "user_not_found"
+
+
+class TestSendDirectMessageAuthValidation:
+    def test_invalid_token_returns_auth_error(self) -> None:
+        auth_err = {"error_code": "SlackAuthError", "message": "Slack authentication failed or token was revoked."}
+        with patch(VALIDATE, return_value=auth_err):
+            cmd = SendDirectMessage("bad-token", "U12345", "hello!")
+            response = cmd.execute({}, {})
+            assert response["command_response"]["http_status"] == 401
+            assert response["error"] is not None
+            assert response["error"]["error_code"] == "SlackAuthError"
+
+    def test_invalid_token_does_not_call_post_json(self) -> None:
+        auth_err = {"error_code": "SlackAuthError", "message": "Slack authentication failed or token was revoked."}
+        with patch(VALIDATE, return_value=auth_err), \
+             patch("connector_slack.commands.send_direct_message.post_json") as mock_post:
+            cmd = SendDirectMessage("bad-token", "U12345", "hello!")
+            cmd.execute({}, {})
+            mock_post.assert_not_called()

@@ -11,6 +11,7 @@ from connector_slack.connector_interface import CommandErrorDict, CommandRespons
 
 DEFAULT_TIMEOUT = 30
 
+SLACK_AUTH_TEST_URL = "https://slack.com/api/auth.test"
 SLACK_GET_UPLOAD_URL = "https://slack.com/api/files.getUploadURLExternal"
 SLACK_COMPLETE_UPLOAD_URL = "https://slack.com/api/files.completeUploadExternal"
 
@@ -39,6 +40,12 @@ def _slack_error_to_connector_error(response_json: dict[str, Any], status_code: 
         status_code if status_code != 200 else 400,
         {"error_code": "SlackMessageFailed", "message": message_str or str(slack_error)},
     )
+
+
+def validate_token(token: str, timeout: int = DEFAULT_TIMEOUT) -> CommandErrorDict | None:
+    """Pre-flight token check via auth.test. Returns error dict if invalid, None if valid."""
+    _response_json, _status, error = post_json(SLACK_AUTH_TEST_URL, token, {})
+    return error
 
 
 def post_json(url: str, token: str, body: dict[str, Any], timeout: int = DEFAULT_TIMEOUT) -> tuple[dict[str, Any], int, CommandErrorDict | None]:

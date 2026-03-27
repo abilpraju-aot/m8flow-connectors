@@ -2,6 +2,8 @@ import base64
 import os
 from unittest.mock import patch
 
+import pytest
+
 from connector_slack.commands.upload_file import (
     UPLOAD_LIMIT_ENV,
     UploadFile,
@@ -10,6 +12,13 @@ from connector_slack.commands.upload_file import (
 )
 
 MODULE = "connector_slack.commands.upload_file"
+VALIDATE = f"{MODULE}.validate_token"
+@pytest.fixture(autouse=True)
+def _bypass_token_validation():
+    with patch(VALIDATE, return_value=None):
+        yield
+
+
 GET_URL = f"{MODULE}.get_upload_url_external"
 UPLOAD_BYTES = f"{MODULE}.upload_file_bytes"
 COMPLETE = f"{MODULE}.complete_upload_external"
@@ -381,3 +390,21 @@ class TestEstimatedBase64DecodedSize:
         b64 = base64.b64encode(data).decode("ascii")
         b64_with_spaces = " ".join(b64[i:i+4] for i in range(0, len(b64), 4))
         assert _estimated_base64_decoded_size(b64_with_spaces) == len(data)
+
+
+class TestUploadFileAuthValidation:
+    def test_invalid_token_returns_auth_error(self) -> None:
+        auth_err = {"error_code": "SlackAuthError", "message": "Slack authentication failed or token was revoked."}
+        with patch(VALIDATE, return_value=auth_err):
+            r = UploadFile("bad-token", "C1", "hello", "t.txt").execute({}, {})
+            assert r["command_response"]["http_status"] == 401
+            assert r["error"] is not None
+            assert r["error"]["error_code"] == "SlackAuthError"
+            assert "spiff__logs" in r
+
+    def test_invalid_token_does_not_call_upload(self) -> None:
+        auth_err = {"error_code": "SlackAuthError", "message": "Slack authentication failed or token was revoked."}
+        with patch(VALIDATE, return_value=auth_err), \
+             patch(GET_URL) as m_url:
+            UploadFile("bad-token", "C1", "hello", "t.txt").execute({}, {})
+            m_url.assert_not_called()

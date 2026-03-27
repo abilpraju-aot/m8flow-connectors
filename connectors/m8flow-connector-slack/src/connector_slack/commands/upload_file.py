@@ -12,6 +12,7 @@ from connector_slack.slack_client import (
     error_response,
     get_upload_url_external,
     upload_file_bytes,
+    validate_token,
 )
 
 # The ONLY directory files may be read from for upload.
@@ -102,6 +103,7 @@ class UploadFile(ConnectorCommand):
         self,
         token: str,
         channel: str,
+        content: str = "",
         filename: str = "",
         initial_comment: str = "",
         filepath: str = "",
@@ -109,6 +111,7 @@ class UploadFile(ConnectorCommand):
     ):
         self.token = token
         self.channel = channel
+        self.content = content or ""
         self.filename = filename or ""
         self.initial_comment = initial_comment or ""
         self.filepath = filepath or ""
@@ -116,6 +119,11 @@ class UploadFile(ConnectorCommand):
 
     def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
         logs: list[str] = []
+
+        auth_error = validate_token(self.token)
+        if auth_error is not None:
+            logs.append("token validation failed")
+            return self._result(logs, 401, auth_error["error_code"], auth_error["message"])
 
         try:
             limit_bytes = _get_upload_limit_bytes()
@@ -166,6 +174,11 @@ class UploadFile(ConnectorCommand):
                     )
                 _enforce_upload_limit(effective_filename, len(content_bytes), limit_bytes)
                 logs.append(f"base64 mode: {effective_filename} ({len(content_bytes)} bytes)")
+            elif self.content:
+                content_bytes = self.content.encode("utf-8")
+                effective_filename = self.filename or "upload.txt"
+                _enforce_upload_limit(effective_filename, len(content_bytes), limit_bytes)
+                logs.append(f"content mode: {effective_filename} ({len(content_bytes)} bytes)")
             else:
                 logs.append("no content source provided")
                 return self._result(
