@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        connector:
+          - m8flow-connector-salesforce
+          - m8flow-connector-slack
+          - m8flow-connector-smtp
+          - m8flow-connector-stripe
+    defaults:
+      run:
+        working-directory: connectors/${{ matrix.connector }}
+    env:
+      POETRY_NO_INTERACTION: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run tests
+        run: poetry run pytest
