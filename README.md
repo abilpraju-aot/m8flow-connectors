@@ -16,6 +16,7 @@ If you are looking for the full platform, deployment, and runtime services, star
 
 | Connector | Purpose |
 |-----------|---------|
+| `m8flow-connector-github` | Connect to repositories, list pull requests, and list branches |
 | `m8flow-connector-salesforce` | Create, read, update, and delete Salesforce Leads and Contacts |
 | `m8flow-connector-slack` | Post messages, send direct messages, and upload files to Slack |
 | `m8flow-connector-smtp` | Send email through an SMTP server, including attachments |
