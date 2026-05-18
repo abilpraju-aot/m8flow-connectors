@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: Discover connectors
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build connector matrix
+        id: set-matrix
+        run: |
+          # List all immediate subdirectories under connectors/ that contain a pyproject.toml
+          matrix=$(find connectors -mindepth 1 -maxdepth 1 -type d \
+            -exec test -f '{}/pyproject.toml' \; -print \
+            | xargs -I{} basename {} \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "Discovered connectors: ${matrix}"
+
+  test:
+    name: "Test (${{ matrix.connector }})"
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        connector: ${{ fromJson(needs.discover.outputs.matrix) }}
+    defaults:
+      run:
+        working-directory: connectors/${{ matrix.connector }}
+    env:
+      POETRY_NO_INTERACTION: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Lint with ruff
+        run: poetry run ruff check .
+
+      - name: Run tests
+        run: poetry run pytest
