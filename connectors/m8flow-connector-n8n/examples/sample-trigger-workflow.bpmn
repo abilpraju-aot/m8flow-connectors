@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sample m8flow (SpiffWorkflow) process that triggers an n8n workflow via the n8n connector.
+
+  This is illustrative. The exact serviceTaskOperator id and parameter wiring depend on how the
+  n8n connector commands are registered in your m8flow-connector-proxy. Replace the values below
+  (webhook_url, api_key, etc.) with m8flow-managed secrets / process variables rather than literals.
+
+  Flow:
+    Start -> Trigger n8n workflow (TriggerWorkflow) -> Get execution status (GetExecution) -> End
+
+  The TriggerWorkflow result is stored in `n8n_result`; map `n8n_result.executionId` into the
+  GetExecution `execution_id` parameter to track status.
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:spiffworkflow="http://spiffworkflow.org/bpmn/schema/1.0/core"
+                  id="Definitions_n8n_sample"
+                  targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_n8n_sample" name="n8n Connector Sample" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1" name="Start">
+      <bpmn:outgoing>Flow_to_trigger</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:sequenceFlow id="Flow_to_trigger" sourceRef="StartEvent_1" targetRef="Task_TriggerWorkflow"/>
+
+    <bpmn:serviceTask id="Task_TriggerWorkflow" name="Trigger n8n workflow">
+      <bpmn:extensionElements>
+        <spiffworkflow:serviceTaskOperator id="connector_n8n/TriggerWorkflow" resultVariable="n8n_result">
+          <spiffworkflow:parameters>
+            <spiffworkflow:parameter id="webhook_url" type="str" value="'https://n8n.example.com/webhook/abc123'"/>
+            <spiffworkflow:parameter id="method" type="str" value="'POST'"/>
+            <!-- payload is mapped from m8flow workflow variables -->
+            <spiffworkflow:parameter id="payload" type="str" value="json.dumps({'customerId': customer_id, 'email': email})"/>
+            <spiffworkflow:parameter id="auth_type" type="str" value="'header'"/>
+            <spiffworkflow:parameter id="api_key" type="str" value="N8N_API_KEY"/>
+            <spiffworkflow:parameter id="timeout" type="int" value="30"/>
+            <spiffworkflow:parameter id="max_retries" type="int" value="2"/>
+          </spiffworkflow:parameters>
+        </spiffworkflow:serviceTaskOperator>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_trigger</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_status</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="Flow_to_status" sourceRef="Task_TriggerWorkflow" targetRef="Task_GetExecution"/>
+
+    <bpmn:serviceTask id="Task_GetExecution" name="Get execution status">
+      <bpmn:extensionElements>
+        <spiffworkflow:serviceTaskOperator id="connector_n8n/GetExecution" resultVariable="n8n_execution">
+          <spiffworkflow:parameters>
+            <spiffworkflow:parameter id="base_url" type="str" value="'https://n8n.example.com'"/>
+            <spiffworkflow:parameter id="api_key" type="str" value="N8N_API_KEY"/>
+            <spiffworkflow:parameter id="execution_id" type="str" value="n8n_result['command_response']['parsed_body'].get('executionId', '')"/>
+            <spiffworkflow:parameter id="include_data" type="bool" value="True"/>
+          </spiffworkflow:parameters>
+        </spiffworkflow:serviceTaskOperator>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_to_status</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sequenceFlow id="Flow_to_end" sourceRef="Task_GetExecution" targetRef="EndEvent_1"/>
+
+    <bpmn:endEvent id="EndEvent_1" name="End">
+      <bpmn:incoming>Flow_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>

@@ -1,0 +1,9 @@
+{
+  "customerId": "CUST-00123",
+  "email": "ada@example.com",
+  "requestType": "enrichment",
+  "metadata": {
+    "source": "m8flow",
+    "priority": "high"
+  }
+}
