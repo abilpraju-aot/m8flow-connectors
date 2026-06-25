@@ -543,4 +543,4 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12.1"
-content-hash = "6f5059d5240b8ad1b8e7ea0bac40a428cf3b6c3e96d2d1a818e786bbe5a6f52d"
+content-hash = "a9e0549564574138707c3bd632c51a69b3bb21cbf10ea8ff9ba4929a3f75bf0e"

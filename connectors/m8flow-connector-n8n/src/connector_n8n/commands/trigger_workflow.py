@@ -6,6 +6,7 @@ from connector_n8n.connector_interface import ConnectorProxyResponseDict
 from connector_n8n.n8n_client import build_result
 from connector_n8n.n8n_client import call_webhook
 from connector_n8n.n8n_client import error_response
+from connector_n8n.n8n_client import validate_webhook_url
 
 
 class TriggerWorkflow(ConnectorCommand):
@@ -48,6 +49,9 @@ class TriggerWorkflow(ConnectorCommand):
     def execute(self, _config: Any, _task_data: Any) -> ConnectorProxyResponseDict:
         if not self.webhook_url:
             return error_response(400, "N8nInvalidInput", "webhook_url is required.")
+        url_error = validate_webhook_url(self.webhook_url)
+        if url_error:
+            return error_response(400, "N8nInvalidInput", url_error)
         response_json, status, error = call_webhook(
             self.webhook_url,
             self.method,

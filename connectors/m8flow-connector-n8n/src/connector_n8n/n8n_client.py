@@ -5,6 +5,7 @@ API keys and webhook credentials are never logged or included in error messages.
 import json
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 import requests  # type: ignore
 
@@ -30,6 +31,16 @@ def normalize_base_url(base_url: str) -> str:
 def api_url(base_url: str, path: str) -> str:
     """Build a full n8n Public API URL (``{base}/api/v1/{path}``)."""
     return f"{normalize_base_url(base_url)}/api/v1/{path.lstrip('/')}"
+
+
+def validate_webhook_url(webhook_url: str) -> str | None:
+    """Return an error message if the URL is malformed or not http(s); None if valid."""
+    parsed = urlparse(webhook_url)
+    if parsed.scheme not in ("http", "https"):
+        return "webhook_url must use the http or https scheme."
+    if not parsed.netloc:
+        return "webhook_url is not a valid URL."
+    return None
 
 
 def _build_api_headers(api_key: str) -> dict[str, str]:
@@ -108,8 +119,8 @@ def api_request(
         response = requests.request(
             method.upper(), url, headers=headers, params=params, json=json_body, timeout=timeout
         )
-    except Exception as exc:
-        logger.warning("n8n API request failed: %s", exc)
+    except requests.exceptions.RequestException as exc:
+        logger.warning("n8n API request failed: %s", exc, exc_info=True)
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
     return _parse_json_response(response)
 
@@ -163,8 +174,8 @@ def call_webhook(
         response = requests.request(
             method_upper, webhook_url, headers=headers, params=params, json=json_body, auth=auth, timeout=timeout
         )
-    except Exception as exc:
-        logger.warning("n8n webhook request failed: %s", exc)
+    except requests.exceptions.RequestException as exc:
+        logger.warning("n8n webhook request failed: %s", exc, exc_info=True)
         return ({}, 500, {"error_code": exc.__class__.__name__, "message": str(exc)})
     return _parse_webhook_response(response)
 
