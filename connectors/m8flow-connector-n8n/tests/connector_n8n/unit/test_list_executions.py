@@ -38,5 +38,7 @@ class TestListExecutions:
     def test_missing_credentials(self) -> None:
         cmd = ListExecutions("", "")
         response = cmd.execute({}, {})
+        # Errors are surfaced as data (no top-level error) so the workflow does not hang.
+        assert response["error"] is None
         assert response["command_response"]["http_status"] == 400
-        assert response["error"]["error_code"] == "N8nInvalidInput"
+        assert response["command_response"]["parsed_body"]["error_code"] == "N8nInvalidInput"

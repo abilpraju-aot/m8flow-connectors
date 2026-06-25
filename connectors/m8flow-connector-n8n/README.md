@@ -70,10 +70,37 @@ or file content (e.g. base64-encoded) in `payload`. The workflow's output comes 
 
 ## Error handling
 
+Failures are returned **as data inside `command_response`**, not as a top-level `error`. This is
+deliberate: when a connector returns a top-level `error`, the m8flow engine fires a BPMN Error event,
+and if no error-boundary catches it the process instance is suspended — which the UI shows as an
+infinite spinner. By surfacing the failure as data instead, the workflow always continues (e.g. to a
+"Review Response" step) so the error can be displayed or branched on, and the instance never hangs.
+
+On failure, the response is:
+
+```jsonc
+{
+  "command_response": {
+    "http_status": 404,                 // the n8n HTTP status
+    "mimetype": "application/json",
+    "parsed_body": { "error_code": "N8nNotFoundError", "message": "n8n resource not found: ..." },
+    "body": "{\"error_code\": \"N8nNotFoundError\", \"message\": \"...\"}"
+  },
+  "error": null,                          // always null; the engine never throws
+  "command_response_version": 2
+}
+```
+
+In a workflow, read `command_response.http_status` and `command_response.parsed_body.error_code` /
+`.message` to detect and present failures. The `error_code` values are:
+
 - **N8nAuthError**: Invalid or missing API key / webhook credentials (HTTP 401/403).
 - **N8nNotFoundError**: Workflow, execution, or webhook not found (HTTP 404).
 - **N8nRequestFailed**: Other n8n API/webhook errors. Message includes n8n's details for workflow logs.
 - **N8nInvalidInput**: A required parameter (e.g. `webhook_url`, `base_url`, `api_key`, an id) was missing.
+- For transport-level failures (e.g. connection/timeout) the `error_code` is the exception class name.
+
+Credentials are never logged or included in these messages.
 
 ## Adding this connector to m8flow-connector-proxy
 

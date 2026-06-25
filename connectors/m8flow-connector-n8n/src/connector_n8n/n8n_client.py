@@ -169,21 +169,54 @@ def call_webhook(
     return _parse_webhook_response(response)
 
 
-def error_response(http_status: int, error_code: str, message: str) -> ConnectorProxyResponseDict:
-    """Build connector response for an error (e.g. missing required field)."""
+def _error_command_response(http_status: int, error_code: str, message: str) -> CommandResponseDict:
+    """Pack an error into the command_response body so it surfaces as data (no top-level error).
+
+    The m8flow engine raises an uncaught error (suspending the process instance, which the UI shows
+    as an infinite spinner) whenever a connector returns a top-level ``error`` with an ``error_code``
+    and no BPMN error-boundary catches it. To let workflows display or branch on n8n failures instead
+    of hanging, the error is returned inside ``command_response``: the n8n status as ``http_status``
+    and ``{"error_code", "message"}`` as ``parsed_body``.
+    """
+    parsed_body = {"error_code": error_code, "message": message}
     return {
-        "command_response": {"body": "{}", "mimetype": "application/json", "http_status": http_status, "parsed_body": {}},
-        "error": {"error_code": error_code, "message": message},
+        "body": json.dumps(parsed_body),
+        "mimetype": "application/json",
+        "http_status": http_status,
+        "parsed_body": parsed_body,
+    }
+
+
+def error_response(http_status: int, error_code: str, message: str) -> ConnectorProxyResponseDict:
+    """Build connector response for an error (e.g. missing required field).
+
+    Returned as data (``error`` is None) so the workflow continues and can display the error rather
+    than suspending the process instance. See :func:`_error_command_response`.
+    """
+    return {
+        "command_response": _error_command_response(http_status, error_code, message),
+        "error": None,
         "command_response_version": 2,
     }
 
 
 def build_result(response_json: Any, status: int, error: CommandErrorDict | None) -> ConnectorProxyResponseDict:
-    """Build connector response from an n8n response or error."""
+    """Build connector response from an n8n response or error.
+
+    On error the error is surfaced inside ``command_response`` (``error`` stays None) so the workflow
+    proceeds and can review/branch on it instead of the instance suspending. See
+    :func:`_error_command_response`.
+    """
+    if error is not None:
+        return {
+            "command_response": _error_command_response(status, error["error_code"], error["message"]),
+            "error": None,
+            "command_response_version": 2,
+        }
     return_response: CommandResponseDict = {
         "body": json.dumps(response_json),
         "mimetype": "application/json",
         "http_status": status,
         "parsed_body": response_json,
     }
-    return {"command_response": return_response, "error": error, "command_response_version": 2}
+    return {"command_response": return_response, "error": None, "command_response_version": 2}

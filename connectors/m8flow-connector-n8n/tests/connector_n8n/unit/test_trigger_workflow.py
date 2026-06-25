@@ -63,8 +63,10 @@ class TestTriggerWorkflow:
     def test_missing_webhook_url(self) -> None:
         cmd = TriggerWorkflow("")
         response = cmd.execute({}, {})
+        # Errors are surfaced as data (no top-level error) so the workflow does not hang.
+        assert response["error"] is None
         assert response["command_response"]["http_status"] == 400
-        assert response["error"]["error_code"] == "N8nInvalidInput"
+        assert response["command_response"]["parsed_body"]["error_code"] == "N8nInvalidInput"
 
     def test_auth_error(self) -> None:
         with patch("connector_n8n.commands.trigger_workflow.call_webhook") as mock_call:
@@ -75,5 +77,6 @@ class TestTriggerWorkflow:
             )
             cmd = TriggerWorkflow(WEBHOOK_URL)
             response = cmd.execute({}, {})
+            assert response["error"] is None
             assert response["command_response"]["http_status"] == 401
-            assert response["error"]["error_code"] == "N8nAuthError"
+            assert response["command_response"]["parsed_body"]["error_code"] == "N8nAuthError"

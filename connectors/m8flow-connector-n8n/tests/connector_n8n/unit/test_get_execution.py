@@ -31,8 +31,10 @@ class TestGetExecution:
     def test_missing_execution_id(self) -> None:
         cmd = GetExecution(BASE_URL, "key", "")
         response = cmd.execute({}, {})
+        # Errors are surfaced as data (no top-level error) so the workflow does not hang.
+        assert response["error"] is None
         assert response["command_response"]["http_status"] == 400
-        assert response["error"]["error_code"] == "N8nInvalidInput"
+        assert response["command_response"]["parsed_body"]["error_code"] == "N8nInvalidInput"
 
     def test_not_found(self) -> None:
         with patch("connector_n8n.commands.get_execution.api_request") as mock_req:
@@ -43,5 +45,6 @@ class TestGetExecution:
             )
             cmd = GetExecution(BASE_URL, "key", "999")
             response = cmd.execute({}, {})
+            assert response["error"] is None
             assert response["command_response"]["http_status"] == 404
-            assert response["error"]["error_code"] == "N8nNotFoundError"
+            assert response["command_response"]["parsed_body"]["error_code"] == "N8nNotFoundError"
