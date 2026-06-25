@@ -17,6 +17,7 @@ If you are looking for the full platform, deployment, and runtime services, star
 | Connector | Purpose |
 |-----------|---------|
 | `m8flow-connector-github` | Connect to repositories, list pull requests, and list branches |
+| `m8flow-connector-n8n` | Invoke n8n webhooks, list workflows, execute workflows, and retrieve execution status |
 | `m8flow-connector-salesforce` | Create, read, update, and delete Salesforce Leads and Contacts |
 | `m8flow-connector-slack` | Post messages, send direct messages, and upload files to Slack |
 | `m8flow-connector-smtp` | Send email through an SMTP server, including attachments |
@@ -89,6 +90,8 @@ At runtime, the connector command executes the external API call and returns a n
 
 ```text
 connectors/
+  m8flow-connector-github/
+  m8flow-connector-n8n/
   m8flow-connector-salesforce/
   m8flow-connector-slack/
   m8flow-connector-smtp/
