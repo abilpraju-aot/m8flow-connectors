@@ -2,8 +2,11 @@
 import json
 from typing import Any
 
-from connector_slack.connector_interface import ConnectorCommand, ConnectorProxyResponseDict
-from connector_slack.slack_client import build_result, error_response, post_json
+from connector_slack.connector_interface import ConnectorCommand
+from connector_slack.connector_interface import ConnectorProxyResponseDict
+from connector_slack.slack_client import build_result
+from connector_slack.slack_client import error_response
+from connector_slack.slack_client import post_json
 
 SLACK_URL = "https://slack.com/api/chat.postMessage"
 

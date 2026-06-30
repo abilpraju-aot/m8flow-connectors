@@ -9,12 +9,10 @@ from email.message import EmailMessage
 from smtplib import SMTP
 from typing import Any
 
-from spiffworkflow_connector_command.command_interface import (
-    CommandErrorDict,
-    CommandResponseDict,
-    ConnectorCommand,
-    ConnectorProxyResponseDict,
-)
+from spiffworkflow_connector_command.command_interface import CommandErrorDict
+from spiffworkflow_connector_command.command_interface import CommandResponseDict
+from spiffworkflow_connector_command.command_interface import ConnectorCommand
+from spiffworkflow_connector_command.command_interface import ConnectorProxyResponseDict
 
 # This is the ONLY directory attachments may be read from when using "path".
 # Mount your host folder to this path in docker-compose.
@@ -120,8 +118,8 @@ def _resolve_and_validate_attachment_path(path_value: str) -> str:
 
     try:
         common = os.path.commonpath([allowed_root, candidate])
-    except ValueError:
-        raise ValueError(f"Attachment path is invalid: {path_value!r}")
+    except ValueError as err:
+        raise ValueError(f"Attachment path is invalid: {path_value!r}") from err
 
     if common != allowed_root:
         raise ValueError(

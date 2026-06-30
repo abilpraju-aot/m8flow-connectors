@@ -6,8 +6,8 @@ from unittest.mock import patch
 from connector_smtp.commands.send_email import ATTACHMENTS_LIMIT_ENV
 from connector_smtp.commands.send_email import DEFAULT_ATTACHMENTS_LIMIT_MB
 from connector_smtp.commands.send_email import DEFAULT_SMTP_TIMEOUT_SECONDS
-from connector_smtp.commands.send_email import SMTP_TIMEOUT_ENV
 from connector_smtp.commands.send_email import HARD_ATTACHMENTS_LIMIT_MB
+from connector_smtp.commands.send_email import SMTP_TIMEOUT_ENV
 from connector_smtp.commands.send_email import SendHTMLEmail
 from connector_smtp.commands.send_email import _dedupe_keep_order
 from connector_smtp.commands.send_email import _env_int
@@ -95,7 +95,7 @@ class TestAttachmentHelpers:
             assert "absolute path" in str(exc)
 
         try:
-            _resolve_and_validate_attachment_path("/tmp/report.pdf")
+            _resolve_and_validate_attachment_path("/tmp/report.pdf")  # noqa: S108
             raise AssertionError("Expected ValueError for outside path")
         except ValueError as exc:
             assert "must be under" in str(exc)
@@ -177,7 +177,7 @@ class TestSendHtmlEmail:
                 smtp_host="smtp.example.com",
                 smtp_port=587,
                 smtp_user="user",
-                smtp_password="pass",
+                smtp_password="pass",  # noqa: S106
                 smtp_starttls=True,
                 email_subject="Subject",
                 email_body="Plain body",

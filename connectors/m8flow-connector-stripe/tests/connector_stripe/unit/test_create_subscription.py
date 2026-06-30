@@ -108,7 +108,7 @@ class TestCreateSubscription:
                 api_key="sk_test_123",
                 customer_id="cus_abc123",
                 price_id="price_xyz789",
-                card_token="tok_visa",
+                card_token="tok_visa",  # noqa: S106
             )
             response = cmd.execute({}, {})
             assert response["command_response"]["http_status"] == 200
@@ -136,7 +136,7 @@ class TestCreateSubscription:
                 api_key="sk_test_123",
                 customer_id="cus_abc123",
                 price_id="price_xyz789",
-                card_token="tok_chargedeclined",
+                card_token="tok_chargedeclined",  # noqa: S106
             )
             response = cmd.execute({}, {})
             assert response["command_response"]["http_status"] == 402
@@ -154,7 +154,7 @@ class TestCreateSubscription:
                 api_key="sk_test_123",
                 customer_id="cus_abc123",
                 price_id="price_xyz789",
-                card_token="tok_visa",
+                card_token="tok_visa",  # noqa: S106
             )
             response = cmd.execute({}, {})
             assert response["command_response"]["http_status"] == 400

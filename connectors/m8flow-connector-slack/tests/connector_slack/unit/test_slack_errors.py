@@ -1,7 +1,8 @@
 """Negative tests for invalid token and missing permissions (Slack error mapping)."""
 from unittest.mock import patch
 
-from connector_slack.slack_client import post_json, post_multipart
+from connector_slack.slack_client import post_json
+from connector_slack.slack_client import post_multipart
 
 
 class TestSlackAuthErrors:

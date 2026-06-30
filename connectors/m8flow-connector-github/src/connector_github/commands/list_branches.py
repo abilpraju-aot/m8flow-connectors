@@ -1,8 +1,11 @@
 """List branches for a GitHub repository."""
 from typing import Any
 
-from connector_github.connector_interface import ConnectorCommand, ConnectorProxyResponseDict
-from connector_github.github_client import GITHUB_API_BASE, build_result, get_json
+from connector_github.connector_interface import ConnectorCommand
+from connector_github.connector_interface import ConnectorProxyResponseDict
+from connector_github.github_client import GITHUB_API_BASE
+from connector_github.github_client import build_result
+from connector_github.github_client import get_json
 
 
 class ListBranches(ConnectorCommand):
@@ -21,7 +24,8 @@ class ListBranches(ConnectorCommand):
         :param token: GitHub Personal Access Token (PAT) or OAuth token (from m8flow/platform).
         :param owner: Repository owner (user or organisation), e.g. ``octocat``.
         :param repo: Repository name, e.g. ``hello-world``.
-        :param protected: Filter branches: ``true`` for protected only, ``false`` for unprotected only, or ``""`` for all (default).
+        :param protected: Filter branches: ``true`` for protected only, ``false`` for unprotected only,
+            or ``""`` for all (default).
         :param per_page: Number of results per page (1–100). Default is 30.
         :param page: Page number to fetch. Default is 1.
         """

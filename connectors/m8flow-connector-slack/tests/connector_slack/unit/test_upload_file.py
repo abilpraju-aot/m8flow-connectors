@@ -2,12 +2,10 @@ import base64
 import os
 from unittest.mock import patch
 
-from connector_slack.commands.upload_file import (
-    UPLOAD_LIMIT_ENV,
-    UploadFile,
-    _estimated_base64_decoded_size,
-    _get_upload_limit_bytes,
-)
+from connector_slack.commands.upload_file import UPLOAD_LIMIT_ENV
+from connector_slack.commands.upload_file import UploadFile
+from connector_slack.commands.upload_file import _estimated_base64_decoded_size
+from connector_slack.commands.upload_file import _get_upload_limit_bytes
 
 MODULE = "connector_slack.commands.upload_file"
 GET_URL = f"{MODULE}.get_upload_url_external"
@@ -269,14 +267,14 @@ class TestUploadFileSpiffLogs:
             _mock_success(m_url, m_up, m_done)
             r = UploadFile("tok", "C1", filename="t.txt", content_base64=_b64("hello")).execute({}, {})
             assert "spiff__logs" in r
-            assert any("upload completed successfully" in l for l in r["spiff__logs"])
+            assert any("upload completed successfully" in line for line in r["spiff__logs"])
 
     def test_empty_content_includes_logs(self) -> None:
         r = UploadFile("tok", "C1", filename="t.txt").execute({}, {})
         assert "spiff__logs" in r
 
     def test_error_response_includes_logs(self) -> None:
-        with patch(GET_URL) as m_url, patch(UPLOAD_BYTES) as m_up, patch(COMPLETE) as m_done:
+        with patch(GET_URL) as m_url, patch(UPLOAD_BYTES), patch(COMPLETE):
             m_url.return_value = ({}, 403, {"error_code": "SlackPermissionError", "message": "missing_scope"})
             r = UploadFile("tok", "C1", filename="x.txt", content_base64=_b64("data")).execute({}, {})
             assert "spiff__logs" in r

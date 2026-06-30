@@ -5,9 +5,11 @@ from typing import Any
 
 import requests  # type: ignore
 
-logger = logging.getLogger(__name__)
+from connector_slack.connector_interface import CommandErrorDict
+from connector_slack.connector_interface import CommandResponseDict
+from connector_slack.connector_interface import ConnectorProxyResponseDict
 
-from connector_slack.connector_interface import CommandErrorDict, CommandResponseDict, ConnectorProxyResponseDict
+logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30
 
@@ -41,7 +43,9 @@ def _slack_error_to_connector_error(response_json: dict[str, Any], status_code: 
     )
 
 
-def post_json(url: str, token: str, body: dict[str, Any], timeout: int = DEFAULT_TIMEOUT) -> tuple[dict[str, Any], int, CommandErrorDict | None]:
+def post_json(
+    url: str, token: str, body: dict[str, Any], timeout: int = DEFAULT_TIMEOUT
+) -> tuple[dict[str, Any], int, CommandErrorDict | None]:
     """
     POST JSON to Slack API. Returns (response_json, http_status, error_dict).
     error_dict is None on success. Token is only used in Authorization header.

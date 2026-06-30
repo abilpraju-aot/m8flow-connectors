@@ -5,7 +5,9 @@ from typing import Any
 
 import requests  # type: ignore
 
-from connector_github.connector_interface import CommandErrorDict, CommandResponseDict, ConnectorProxyResponseDict
+from connector_github.connector_interface import CommandErrorDict
+from connector_github.connector_interface import CommandResponseDict
+from connector_github.connector_interface import ConnectorProxyResponseDict
 
 logger = logging.getLogger(__name__)
 

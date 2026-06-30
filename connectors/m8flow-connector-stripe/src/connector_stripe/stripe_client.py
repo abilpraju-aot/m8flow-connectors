@@ -7,11 +7,11 @@ from urllib.parse import urlencode
 
 import requests  # type: ignore
 
-logger = logging.getLogger(__name__)
-
 from connector_stripe.connector_interface import CommandErrorDict
 from connector_stripe.connector_interface import CommandResponseDict
 from connector_stripe.connector_interface import ConnectorProxyResponseDict
+
+logger = logging.getLogger(__name__)
 
 STRIPE_API_BASE = "https://api.stripe.com/v1"
 DEFAULT_TIMEOUT = 30

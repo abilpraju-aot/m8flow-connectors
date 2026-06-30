@@ -5,14 +5,12 @@ import binascii
 import os
 from typing import Any
 
-from connector_slack.connector_interface import ConnectorCommand, ConnectorProxyResponseDict
-from connector_slack.slack_client import (
-    build_result,
-    complete_upload_external,
-    error_response,
-    get_upload_url_external,
-    upload_file_bytes,
-)
+from connector_slack.connector_interface import ConnectorCommand
+from connector_slack.connector_interface import ConnectorProxyResponseDict
+from connector_slack.slack_client import build_result
+from connector_slack.slack_client import complete_upload_external
+from connector_slack.slack_client import get_upload_url_external
+from connector_slack.slack_client import upload_file_bytes
 
 # The ONLY directory files may be read from for upload.
 # Mount your host folder to this path in docker-compose.

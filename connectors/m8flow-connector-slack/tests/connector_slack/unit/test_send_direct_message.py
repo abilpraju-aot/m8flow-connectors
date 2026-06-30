@@ -1,4 +1,3 @@
-import json
 from unittest.mock import patch
 
 from connector_slack.commands.send_direct_message import SendDirectMessage

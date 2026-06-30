@@ -34,11 +34,12 @@ class TestListPullRequests:
                 "body": json.dumps(SAMPLE_PRS),
                 "mimetype": "application/json",
                 "http_status": 200,
+                "parsed_body": SAMPLE_PRS,
             }
             assert response["error"] is None
             call_url, call_token = mock_get.call_args[0][0], mock_get.call_args[0][1]
             assert "pulls" in call_url
-            assert call_token == "ghp_token"
+            assert call_token == "ghp_token"  # noqa: S105
             call_params = mock_get.call_args[1]["params"]
             assert call_params["state"] == "open"
 

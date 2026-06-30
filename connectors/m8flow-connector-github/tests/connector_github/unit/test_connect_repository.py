@@ -22,6 +22,7 @@ class TestConnectRepository:
                 "body": json.dumps(repo_response),
                 "mimetype": "application/json",
                 "http_status": 200,
+                "parsed_body": repo_response,
             }
             assert response["error"] is None
             mock_get.assert_called_once()

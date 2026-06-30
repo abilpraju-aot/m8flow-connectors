@@ -21,6 +21,7 @@ class TestListBranches:
                 "body": json.dumps(SAMPLE_BRANCHES),
                 "mimetype": "application/json",
                 "http_status": 200,
+                "parsed_body": SAMPLE_BRANCHES,
             }
             assert response["error"] is None
             call_url = mock_get.call_args[0][0]

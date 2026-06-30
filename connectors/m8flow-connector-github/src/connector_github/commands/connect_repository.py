@@ -1,8 +1,11 @@
 """Connect to a GitHub repository and return its metadata."""
 from typing import Any
 
-from connector_github.connector_interface import ConnectorCommand, ConnectorProxyResponseDict
-from connector_github.github_client import GITHUB_API_BASE, build_result, get_json
+from connector_github.connector_interface import ConnectorCommand
+from connector_github.connector_interface import ConnectorProxyResponseDict
+from connector_github.github_client import GITHUB_API_BASE
+from connector_github.github_client import build_result
+from connector_github.github_client import get_json
 
 
 class ConnectRepository(ConnectorCommand):
